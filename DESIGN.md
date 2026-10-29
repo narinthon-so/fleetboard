@@ -62,7 +62,9 @@ CREATE TABLE actors (
   id              INTEGER PRIMARY KEY,
   kind            TEXT NOT NULL CHECK (kind IN ('human','agent')),
   provider        TEXT,                  -- claude | codex | antigravity | unknown
-  external_id     TEXT,                  -- PASEO_AGENT_ID, else provider session id, else NULL
+  external_id     TEXT NOT NULL,         -- never NULL (SQLite treats NULLs as distinct in UNIQUE):
+                                         -- PASEO_AGENT_ID | provider session id |
+                                         -- proc:<host>:<provider>:<ppid> | anon:<host>:<cwd> | human
   label           TEXT,                  -- human-friendly, e.g. "codex 403254b"
   trusted         INTEGER NOT NULL DEFAULT 0,   -- tracker role (D2), set by the human only
   first_seen      TEXT NOT NULL,
@@ -82,7 +84,7 @@ CREATE TABLE tasks (
   kind                  TEXT NOT NULL DEFAULT 'code' CHECK (kind IN ('code','note')),
   status                TEXT NOT NULL CHECK (status IN
                           ('draft','todo','in_progress','review','done','dropped')),
-  priority              INTEGER NOT NULL DEFAULT 2 CHECK (priority BETWEEN 0 AND 3),
+  priority              INTEGER NOT NULL DEFAULT 2 CHECK (priority BETWEEN 0 AND 3),  -- 0 = highest
   needs_plan_approval   INTEGER NOT NULL DEFAULT 0,
   plan_approved_at      TEXT,
   created_by            INTEGER NOT NULL REFERENCES actors(id),
@@ -102,8 +104,8 @@ CREATE TABLE claims (
   task_id         INTEGER NOT NULL REFERENCES tasks(id),
   actor_id        INTEGER NOT NULL REFERENCES actors(id),
   host            TEXT NOT NULL,
-  cwd             TEXT NOT NULL,
-  branch          TEXT,                  -- NULL for kind=note or outside git
+  cwd             TEXT NOT NULL,         -- latest observed, like branch
+  branch          TEXT,                  -- latest branch observed for the claimant (refreshed on every call)
   base_commit     TEXT,                  -- HEAD at claim time; evidence starts here
   workspace_id    TEXT,                  -- from a runtime adapter, if any
   claimed_at      TEXT NOT NULL,
@@ -145,6 +147,15 @@ Times are UTC RFC 3339 strings. IDs are sequential integers shown as `fb-<n>`.
 A central store has no merge problem, so the hash IDs Beads needs for git
 merges are not required.
 
+**Concurrent writers.** Every connection sets `PRAGMA journal_mode=WAL` and
+`PRAGMA busy_timeout=5000`. Every write that reads state first (claim, status
+transitions, dependency edits) runs in `BEGIN IMMEDIATE`, so two agents never
+both read "ready" and then race on the upgrade to a write lock. `DB_LOCKED`
+(exit 5) is reported only after the busy timeout runs out.
+
+**Seed rows.** The migration that creates `actors` inserts the single human
+actor (`kind='human'`, `provider=NULL`, `external_id='human'`).
+
 ### Derived states (D6)
 
 Computed in queries, never stored:
@@ -153,10 +164,11 @@ Computed in queries, never stored:
 |---|---|
 | Ready | `status='todo'` and every blocker is `done` |
 | Blocked | `status='todo'` and at least one blocker is not `done` |
+| Orphaned | `status='todo'` and at least one blocker is `dropped`: still Blocked, and listed in Needs me so the human removes the dependency or drops the task |
 | Plan pending | `status='in_progress'`, `needs_plan_approval=1`, `plan IS NOT NULL`, `plan_approved_at IS NULL` |
 | Stale | `status='in_progress'` and the active claim is stale (see Claims) |
 | No evidence | `status='review'`, `kind='code'`, evidence has zero commits |
-| **Needs me** | draft ∪ plan pending ∪ stale ∪ review ∪ no evidence ∪ adapter pending permissions |
+| **Needs me** | draft ∪ plan pending ∪ stale ∪ orphaned ∪ review ∪ no evidence ∪ adapter pending permissions |
 
 ### Status transitions
 
@@ -178,12 +190,16 @@ no evidence.
 
 Resolution, first match wins:
 
-1. `PASEO_AGENT_ID` → `agent`, provider from `AI_AGENT` / known variables, `external_id` = the Paseo id.
+1. `PASEO_AGENT_ID` → `agent`, `external_id` = the Paseo id. Provider from `AI_AGENT` / known provider variables, else from process ancestry (rule 3), else `unknown`.
 2. Provider variables → `agent`:
    - Claude Code: `CLAUDECODE=1`, `external_id` = `CLAUDE_CODE_SESSION_ID`.
    - Codex, Antigravity: **to confirm** (open question in IDEA.md).
-3. Process ancestry contains a known agent binary (`claude`, `codex`, `agy`, …) → `agent`, provider from the binary, `external_id` NULL (one actor per host + provider + parent pid).
-4. Nothing found → `anonymous` agent actor for host + cwd. **Not human.**
+3. Process ancestry contains a known agent binary (`claude`, `codex`, `agy`, …) → `agent`, provider from the binary, `external_id = proc:<host>:<provider>:<pid of that agent process>`.
+4. Nothing found → agent actor `provider='unknown'`, `external_id = anon:<host>:<cwd>`. **Not human.**
+
+Rules 1 and 3 together cover a Codex or agy agent started by Paseo, so the
+open question about their own variables (IDEA.md) does not block the M0
+done-criterion; it only affects agents started outside Paseo.
 
 The human actor exists only through:
 
@@ -191,7 +207,14 @@ The human actor exists only through:
 - The web UI (M1), which binds to loopback only.
 
 Every human action logs `pid`, `ppid` and the process chain in `events`, so an
-agent that strips its environment to pass as the human is visible afterwards.
+agent that strips its environment to pass as the human is usually visible
+afterwards.
+
+**Known limits** (one person's machine; the guard stops eager agents, not attackers):
+
+- An agent can strip its environment *and* run outside its own process tree (e.g. through `setsid` or a scheduler). The process chain then looks human.
+- An agent with shell access can write `board.db` directly with `sqlite3`. That bypasses every rule and the audit log.
+- From M1, an agent can `curl` the loopback web UI. M1 therefore requires a session cookie obtained from a one-time login token that `fb serve` prints in the human's terminal, plus an `X-Requested-With` header on writes (the agent-kanban pattern). The token is never written where agents read.
 
 ## Projects and instances (D11)
 
@@ -210,10 +233,11 @@ On `add` and `claim`, `fb` reads git from the current directory:
 - `fb claim <id>` succeeds only if the task is Ready (or the caller is human / trusted with `--steal`). The unique index makes two simultaneous claims race-safe: the loser gets exit 3 `CLAIM_HELD`.
 - `fb claim` without an id claims the highest-priority Ready task in the current project (oldest first). This is the `bd ready --claim` pattern.
 - Claim records host, cwd, branch and `base_commit = git rev-parse HEAD`.
-- Every `fb` call by the claimant on that task updates `last_activity`.
+- Every `fb` call by the claimant refreshes `cwd` and `branch` to the current values (an agent usually claims on `main`, then creates its feature branch) and updates `last_activity`. `base_commit` never changes.
+- New commits on the claim's branch also count as activity for staleness: agents rarely call `fb` mid-task, and a busy agent committing every 30 minutes must not look stale.
 - **Stale** when either:
   - a runtime adapter reports the agent gone (M2), or
-  - with no adapter, `now − last_activity > stale_after` (config, default `2h`).
+  - with no adapter, `now − max(last_activity, last commit time on the branch) > stale_after` (config, default `2h`).
 - Stale claims are never released automatically. The human runs `fb release <id>` (task → `todo`) or `fb claim <id> --steal --for <actor>`.
 
 ## Evidence (D4)
@@ -222,7 +246,7 @@ Computed live for local claims whenever a task is shown or listed with `--eviden
 
 | Field | How |
 |---|---|
-| `commits` | `git rev-list --count <base_commit>..<branch>` in the claim cwd |
+| `commits` | `git rev-list --count <base_commit>..<branch>` in the claim cwd, where `<branch>` is the latest observed branch (see Claims) |
 | `rebased` | `true` if `base_commit` is no longer an ancestor of the branch; commits then fall back to `git log --since=<claimed_at> <branch>` |
 | `diffstat` | `git diff --shortstat <base_commit>...<branch>` |
 | `dirty` | `git status --porcelain` is non-empty |
@@ -242,8 +266,8 @@ Every command with `--json` prints one JSON value on stdout and nothing else.
 
 | Command | Does |
 |---|---|
-| `fb add <title> [--goal …] [--ac …]… [--kind code\|note] [--prio 0-3] [--blocked-by <id>]… [--ticket <system:key>] [--project …] [--plan-approval]` | Create a task. Agent → `draft`; human or trusted → `todo`. |
-| `fb ready [--project …\|--all]` | List Ready tasks. Default scope: the current project. |
+| `fb add <title> [--goal …] [--ac …]… [--kind code\|note] [--prio 0-3] [--blocked-by <id>]… [--ticket <system:key> [--ticket-title …] [--ticket-url …]] [--project …] [--plan-approval]` | Create a task. Agent → `draft`; human or trusted → `todo`. A new ticket key creates the ticket row; title and URL fill or update it. |
+| `fb ready [--project …\|--all]` | List Ready tasks. Default scope: the current project; outside git, all projects. |
 | `fb claim [<id>]` | Claim a task (see Claims). |
 | `fb plan <id> <text\|->` | Write or replace the plan. |
 | `fb note <id> <text\|-> [--kind handoff\|comment\|finding]` | Add a note. Default kind `handoff`. |
