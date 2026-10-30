@@ -284,6 +284,7 @@ Every command with `--json` prints one JSON value on stdout and nothing else.
 | `fb list [--status …] [--project …] [--agent …] [--host …] [--needs-me] [--all]` | Filtered list. |
 | `fb prime` | Workflow guide for agents plus the caller's active claim and its latest handoff note. |
 | `fb whoami` | Print caller identity, host, project, instance, and delegated rights. |
+| `fb hook <event>` | Record agent lifecycle hook event (`session-start`, `stop`, `tool-use`, `prompt`) from stdin JSON. On `session-start`, prints `fb prime` context (`hookSpecificOutput` for Claude Code, plain text for Codex). Always exits 0. |
 | `fb dep add <task> <blocker>` / `fb dep rm …` | Edit dependencies; refuses cycles. |
 
 ### Human only (`--as-human`)
@@ -354,9 +355,10 @@ src/
   gitinfo.rs     project key, instance, evidence (shells out to git / gh)
   prime.rs       fb prime context generation
   server/        M1 axum loopback server, auth tokens, read API, SSE
-  adapters/      M2 RuntimeAdapter trait: instances(), agent_status(id), pending_permissions(id)
+  adapters/      RuntimeAdapter trait: instances(), agent_status(id), pending_permissions(id)
     none.rs      default self-report adapter
     paseo.rs     Paseo adapter (workspace ls, ls, inspect; longest prefix join; 5 s cache)
+    hooks.rs     hooks adapter (reads last hook event to report running, idle, gone)
 ```
 
 `Backend` trait from day one with one `SqliteBackend`; `HttpBackend` arrives
@@ -378,6 +380,7 @@ The `RuntimeAdapter` trait provides live integration with agent orchestrators:
 - **JSON contract:** snapshot tests (`insta`) of `--json` output so the agent-facing format cannot change by accident.
 - `gh` is stubbed with a fake binary on `PATH` in tests.
 - **Adapters (M2):** tested with a fake `paseo` binary on `PATH` covering fixtures for `running`, `idle`, `permission`, `archived`, `missing`, `binary absent`, and `garbage output`. Verifies that archiving an agent marks its claim stale within one poll, and pending permissions join the Needs-me view.
+- **Adapters (M3):** tested with sample hook payloads (Claude Code, Codex), garbage stdin, missing board database, timing benchmark (< 100 ms), and status transitions (`running` after tool-use/prompt, `idle` after stop, `gone` after `stale_after`).
 
 ## Milestones (D10)
 
