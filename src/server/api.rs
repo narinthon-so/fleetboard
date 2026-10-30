@@ -13,7 +13,8 @@ use super::AppState;
 use crate::gitinfo::{self, Evidence};
 use crate::model::{self, Derived, Facts, Kind, Status};
 use crate::store::{
-    Backend, ClaimRow, FbError, SqliteBackend, TaskFilter, TaskRow, fmt_id, parse_id,
+    Actor, Backend, ClaimRequest, ClaimRow, Command, Ctx, FbError, Location, SqliteBackend,
+    TaskFilter, TaskRow, fmt_id, parse_id,
 };
 
 fn ts(t: DateTime<Utc>) -> String {
@@ -384,6 +385,7 @@ pub async fn task_detail_handler(
                 "proc_chain": e.proc_chain,
                 "created_at": ts(e.created_at),
                 "on_behalf_of": e.on_behalf_of,
+                "source": e.source,
             }))
             .collect::<Vec<_>>()
     );
@@ -399,4 +401,379 @@ pub async fn task_detail_handler(
         })),
     )
         .into_response()
+}
+
+pub fn fb_error_response(e: FbError) -> Response {
+    let status = match &e {
+        FbError::Usage(_) => StatusCode::BAD_REQUEST,
+        FbError::NotFound(_) => StatusCode::NOT_FOUND,
+        FbError::ClaimHeld(_)
+        | FbError::NotReady(_)
+        | FbError::BadTransition(_)
+        | FbError::DepCycle(_) => StatusCode::CONFLICT,
+        FbError::HumanOnly(_) | FbError::NotClaimant(_) => StatusCode::FORBIDDEN,
+        FbError::SchemaAhead { .. } | FbError::DbLocked | FbError::Store(_) => {
+            StatusCode::INTERNAL_SERVER_ERROR
+        }
+    };
+    (
+        status,
+        axum::Json(json!({
+            "v": 1,
+            "ok": false,
+            "error": {
+                "code": e.code(),
+                "message": e.to_string(),
+            }
+        })),
+    )
+        .into_response()
+}
+
+fn get_context(state: &AppState) -> Result<(SqliteBackend, Actor, Ctx), FbError> {
+    let db = SqliteBackend::open(&state.db_path)?;
+    let actor = db.find_actor("human")?;
+    let ctx = Ctx {
+        now: Utc::now(),
+        pid: std::process::id(),
+        ppid: 0,
+        proc_chain: "web".to_string(),
+        source: Some("web".to_string()),
+    };
+    Ok((db, actor, ctx))
+}
+
+fn parse_task_id(s: &str) -> Result<i64, FbError> {
+    parse_id(s).map_err(|_| FbError::NotFound(format!("task {s:?} not found")))
+}
+
+fn task_success_response(state: &AppState, db: &SqliteBackend, task: &TaskRow) -> Response {
+    let cfg = crate::config::load(&state.config.home).unwrap_or_default();
+    let now = Utc::now();
+    let derived = derive_for(db, &state.host, cfg.gh, now, cfg.stale_after, task);
+    let ev = latest_claim(db, task).map(|c| live_evidence(db, &state.host, cfg.gh, &c, now));
+    let t_json = task_json(task, &derived, ev.as_ref());
+    (
+        StatusCode::OK,
+        axum::Json(json!({
+            "v": 1,
+            "ok": true,
+            "data": {
+                "task": t_json
+            }
+        })),
+    )
+        .into_response()
+}
+
+/// POST /api/tasks/:id/promote
+pub async fn promote_handler(
+    State(state): State<Arc<AppState>>,
+    axum::extract::Path(id_str): axum::extract::Path<String>,
+) -> Response {
+    let id = match parse_task_id(&id_str) {
+        Ok(id) => id,
+        Err(e) => return fb_error_response(e),
+    };
+    let (db, actor, ctx) = match get_context(&state) {
+        Ok(c) => c,
+        Err(e) => return fb_error_response(e),
+    };
+    match db.apply(&actor, id, &Command::Promote, &ctx) {
+        Ok(task) => task_success_response(&state, &db, &task),
+        Err(e) => fb_error_response(e),
+    }
+}
+
+/// POST /api/tasks/:id/approve
+pub async fn approve_handler(
+    State(state): State<Arc<AppState>>,
+    axum::extract::Path(id_str): axum::extract::Path<String>,
+) -> Response {
+    let id = match parse_task_id(&id_str) {
+        Ok(id) => id,
+        Err(e) => return fb_error_response(e),
+    };
+    let (db, actor, ctx) = match get_context(&state) {
+        Ok(c) => c,
+        Err(e) => return fb_error_response(e),
+    };
+    match db.apply(&actor, id, &Command::Approve, &ctx) {
+        Ok(task) => task_success_response(&state, &db, &task),
+        Err(e) => fb_error_response(e),
+    }
+}
+
+#[derive(serde::Deserialize, Default)]
+pub struct VerifyPayload {
+    #[serde(default)]
+    pub force: bool,
+}
+
+/// POST /api/tasks/:id/verify
+pub async fn verify_handler(
+    State(state): State<Arc<AppState>>,
+    axum::extract::Path(id_str): axum::extract::Path<String>,
+    bytes: axum::body::Bytes,
+) -> Response {
+    let id = match parse_task_id(&id_str) {
+        Ok(id) => id,
+        Err(e) => return fb_error_response(e),
+    };
+    let payload: VerifyPayload = if bytes.is_empty() {
+        VerifyPayload::default()
+    } else {
+        match serde_json::from_slice(&bytes) {
+            Ok(p) => p,
+            Err(e) => return fb_error_response(FbError::Usage(e.to_string())),
+        }
+    };
+    let (db, actor, ctx) = match get_context(&state) {
+        Ok(c) => c,
+        Err(e) => return fb_error_response(e),
+    };
+    let task = match db.get_task(id) {
+        Ok(t) => t,
+        Err(e) => return fb_error_response(e),
+    };
+    let cfg = crate::config::load(&state.config.home).unwrap_or_default();
+    let commits = if task.kind == Kind::Code {
+        latest_claim(&db, &task)
+            .map(|c| live_evidence(&db, &state.host, cfg.gh, &c, ctx.now))
+            .and_then(|e| e.commits())
+    } else {
+        None
+    };
+    let cmd = Command::Verify {
+        force: payload.force,
+        commits,
+    };
+    match db.apply(&actor, id, &cmd, &ctx) {
+        Ok(task) => task_success_response(&state, &db, &task),
+        Err(e) => fb_error_response(e),
+    }
+}
+
+#[derive(serde::Deserialize, Default)]
+pub struct RejectPayload {
+    pub comment: Option<String>,
+    pub text: Option<String>,
+    pub body: Option<String>,
+}
+
+/// POST /api/tasks/:id/reject
+pub async fn reject_handler(
+    State(state): State<Arc<AppState>>,
+    axum::extract::Path(id_str): axum::extract::Path<String>,
+    bytes: axum::body::Bytes,
+) -> Response {
+    let id = match parse_task_id(&id_str) {
+        Ok(id) => id,
+        Err(e) => return fb_error_response(e),
+    };
+    let payload: RejectPayload = if bytes.is_empty() {
+        RejectPayload::default()
+    } else {
+        match serde_json::from_slice(&bytes) {
+            Ok(p) => p,
+            Err(e) => return fb_error_response(FbError::Usage(e.to_string())),
+        }
+    };
+    let comment = payload
+        .comment
+        .or(payload.text)
+        .or(payload.body)
+        .unwrap_or_default();
+    if comment.trim().is_empty() {
+        return fb_error_response(FbError::Usage("reject comment cannot be empty".into()));
+    }
+    let (db, actor, ctx) = match get_context(&state) {
+        Ok(c) => c,
+        Err(e) => return fb_error_response(e),
+    };
+    let cmd = Command::Reject { comment };
+    match db.apply(&actor, id, &cmd, &ctx) {
+        Ok(task) => task_success_response(&state, &db, &task),
+        Err(e) => fb_error_response(e),
+    }
+}
+
+/// POST /api/tasks/:id/release
+pub async fn release_handler(
+    State(state): State<Arc<AppState>>,
+    axum::extract::Path(id_str): axum::extract::Path<String>,
+) -> Response {
+    let id = match parse_task_id(&id_str) {
+        Ok(id) => id,
+        Err(e) => return fb_error_response(e),
+    };
+    let (db, actor, ctx) = match get_context(&state) {
+        Ok(c) => c,
+        Err(e) => return fb_error_response(e),
+    };
+    match db.apply(&actor, id, &Command::Release, &ctx) {
+        Ok(task) => task_success_response(&state, &db, &task),
+        Err(e) => fb_error_response(e),
+    }
+}
+
+#[derive(serde::Deserialize, Default)]
+pub struct StealPayload {
+    #[serde(rename = "for")]
+    pub for_actor: Option<String>,
+    pub actor: Option<String>,
+}
+
+/// POST /api/tasks/:id/steal
+pub async fn steal_handler(
+    State(state): State<Arc<AppState>>,
+    axum::extract::Path(id_str): axum::extract::Path<String>,
+    bytes: axum::body::Bytes,
+) -> Response {
+    let id = match parse_task_id(&id_str) {
+        Ok(id) => id,
+        Err(e) => return fb_error_response(e),
+    };
+    let payload: StealPayload = if bytes.is_empty() {
+        StealPayload::default()
+    } else {
+        match serde_json::from_slice(&bytes) {
+            Ok(p) => p,
+            Err(e) => return fb_error_response(FbError::Usage(e.to_string())),
+        }
+    };
+    let (db, actor, ctx) = match get_context(&state) {
+        Ok(c) => c,
+        Err(e) => return fb_error_response(e),
+    };
+    let for_spec = payload.for_actor.or(payload.actor);
+    let target_actor = match for_spec {
+        Some(spec) => match db.find_actor(&spec) {
+            Ok(a) => Some(a),
+            Err(e) => return fb_error_response(e),
+        },
+        None => None,
+    };
+    let req = ClaimRequest {
+        id: Some(id),
+        steal: true,
+        for_actor: target_actor,
+        loc: Location {
+            host: state.host.clone(),
+            cwd: String::new(),
+            branch: None,
+            head: None,
+        },
+        scope_project: None,
+    };
+    match db.claim(&actor, &req, &ctx) {
+        Ok(task) => task_success_response(&state, &db, &task),
+        Err(e) => fb_error_response(e),
+    }
+}
+
+#[derive(serde::Deserialize, Default)]
+pub struct DropPayload {
+    pub reason: Option<String>,
+}
+
+/// POST /api/tasks/:id/drop
+pub async fn drop_handler(
+    State(state): State<Arc<AppState>>,
+    axum::extract::Path(id_str): axum::extract::Path<String>,
+    bytes: axum::body::Bytes,
+) -> Response {
+    let id = match parse_task_id(&id_str) {
+        Ok(id) => id,
+        Err(e) => return fb_error_response(e),
+    };
+    let payload: DropPayload = if bytes.is_empty() {
+        DropPayload::default()
+    } else {
+        match serde_json::from_slice(&bytes) {
+            Ok(p) => p,
+            Err(e) => return fb_error_response(FbError::Usage(e.to_string())),
+        }
+    };
+    let (db, actor, ctx) = match get_context(&state) {
+        Ok(c) => c,
+        Err(e) => return fb_error_response(e),
+    };
+    let cmd = Command::Drop {
+        reason: payload.reason,
+    };
+    match db.apply(&actor, id, &cmd, &ctx) {
+        Ok(task) => task_success_response(&state, &db, &task),
+        Err(e) => fb_error_response(e),
+    }
+}
+
+/// POST /api/tasks/:id/reopen
+pub async fn reopen_handler(
+    State(state): State<Arc<AppState>>,
+    axum::extract::Path(id_str): axum::extract::Path<String>,
+) -> Response {
+    let id = match parse_task_id(&id_str) {
+        Ok(id) => id,
+        Err(e) => return fb_error_response(e),
+    };
+    let (db, actor, ctx) = match get_context(&state) {
+        Ok(c) => c,
+        Err(e) => return fb_error_response(e),
+    };
+    match db.apply(&actor, id, &Command::Reopen, &ctx) {
+        Ok(task) => task_success_response(&state, &db, &task),
+        Err(e) => fb_error_response(e),
+    }
+}
+
+#[derive(serde::Deserialize, Default)]
+pub struct NotePayload {
+    pub body: Option<String>,
+    pub text: Option<String>,
+    pub comment: Option<String>,
+    pub kind: Option<String>,
+}
+
+/// POST /api/tasks/:id/notes and POST /api/tasks/:id/comment
+pub async fn note_handler(
+    State(state): State<Arc<AppState>>,
+    axum::extract::Path(id_str): axum::extract::Path<String>,
+    bytes: axum::body::Bytes,
+) -> Response {
+    let id = match parse_task_id(&id_str) {
+        Ok(id) => id,
+        Err(e) => return fb_error_response(e),
+    };
+    let payload: NotePayload = if bytes.is_empty() {
+        NotePayload::default()
+    } else {
+        match serde_json::from_slice(&bytes) {
+            Ok(p) => p,
+            Err(e) => return fb_error_response(FbError::Usage(e.to_string())),
+        }
+    };
+    let body = payload
+        .body
+        .or(payload.text)
+        .or(payload.comment)
+        .unwrap_or_default();
+    if body.trim().is_empty() {
+        return fb_error_response(FbError::Usage("note body cannot be empty".into()));
+    }
+    let kind = payload.kind.unwrap_or_else(|| "comment".to_string());
+    if !["handoff", "comment", "finding"].contains(&kind.as_str()) {
+        return fb_error_response(FbError::Usage(format!(
+            "bad note kind {kind:?} (handoff | comment | finding)"
+        )));
+    }
+    let (db, actor, ctx) = match get_context(&state) {
+        Ok(c) => c,
+        Err(e) => return fb_error_response(e),
+    };
+    let cmd = Command::Note { kind, body };
+    match db.apply(&actor, id, &cmd, &ctx) {
+        Ok(task) => task_success_response(&state, &db, &task),
+        Err(e) => fb_error_response(e),
+    }
 }

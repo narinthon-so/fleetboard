@@ -372,9 +372,20 @@ fn event(
     task_id: Option<i64>,
     actor: &Actor,
     ty: &str,
-    data: Value,
+    mut data: Value,
     ctx: &Ctx,
 ) -> Result<()> {
+    if let Some(src) = &ctx.source {
+        match &mut data {
+            Value::Object(map) => {
+                map.insert("source".to_string(), json!(src));
+            }
+            Value::Null => {
+                data = json!({ "source": src });
+            }
+            _ => {}
+        }
+    }
     tx.execute(
         "INSERT INTO events (task_id, actor_id, type, data, pid, ppid, proc_chain, created_at) \
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
@@ -1331,6 +1342,11 @@ impl Backend for SqliteBackend {
                 .and_then(|v| v.get("on_behalf_of"))
                 .and_then(|v| v.as_str())
                 .map(ToString::to_string);
+            let source = data
+                .as_ref()
+                .and_then(|v| v.get("source"))
+                .and_then(|v| v.as_str())
+                .map(ToString::to_string);
             let created_at_str: String = r.get(7)?;
             let created_at = DateTime::parse_from_rfc3339(&created_at_str)
                 .map(|d| d.with_timezone(&Utc))
@@ -1345,6 +1361,7 @@ impl Backend for SqliteBackend {
                 proc_chain: r.get(6)?,
                 created_at,
                 on_behalf_of,
+                source,
                 actor: Actor {
                     id: r.get(8)?,
                     kind: r.get(9)?,
@@ -1416,6 +1433,7 @@ mod tests {
             pid: 1,
             ppid: 0,
             proc_chain: "test".into(),
+            source: None,
         }
     }
 

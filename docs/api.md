@@ -440,3 +440,336 @@ data: {"type":"changed"}
 - When any process commits a write transaction to `board.db`, `PRAGMA data_version` increments and the server emits `data: {"type":"changed"}\n\n`.
 - The frontend TanStack Query cache invalidates its board queries upon receiving this event.
 - An automatic `: ping\n\n` keepalive is emitted every 15 seconds to keep the connection healthy.
+
+---
+
+## Human Action Endpoints (Writes)
+
+All human-action endpoints act on behalf of the human operator, enforce the exact same store and transition rules as the CLI, and log audit events with `source="web"` and `proc_chain="web"`.
+
+Every write endpoint requires:
+1. `Cookie: fb_session=<session_id>`
+2. `X-Requested-With: fleetboard` (returns `403 Forbidden` if missing or invalid)
+
+Path parameter `:id` accepts either format `fb-12` or numeric `12`. Non-existent tasks return `404 Not Found`.
+
+---
+
+### `POST /api/tasks/:id/promote`
+Promotes a draft task to `todo`. Equivalent to `fb promote <id>`.
+
+**Request:**
+```http
+POST /api/tasks/fb-12/promote HTTP/1.1
+Cookie: fb_session=...
+X-Requested-With: fleetboard
+```
+
+**Response (`200 OK`):**
+```json
+{
+  "v": 1,
+  "ok": true,
+  "data": {
+    "task": {
+      "id": "fb-12",
+      "status": "todo",
+      ...
+    }
+  }
+}
+```
+
+**Errors:**
+- `409 Conflict` (`BAD_TRANSITION`): Task is not in `draft` status.
+
+---
+
+### `POST /api/tasks/:id/approve`
+Approves the plan submitted for a task with `needs_plan_approval = true`. Equivalent to `fb approve <id>`.
+
+**Request:**
+```http
+POST /api/tasks/fb-12/approve HTTP/1.1
+Cookie: fb_session=...
+X-Requested-With: fleetboard
+```
+
+**Response (`200 OK`):**
+```json
+{
+  "v": 1,
+  "ok": true,
+  "data": {
+    "task": {
+      "id": "fb-12",
+      "plan_approved_at": "2026-10-30T10:30:00Z",
+      ...
+    }
+  }
+}
+```
+
+**Errors:**
+- `409 Conflict` (`BAD_TRANSITION`): Task is not in `in_progress` or has no plan awaiting approval.
+
+---
+
+### `POST /api/tasks/:id/verify`
+Verifies completion of a task in `review`, transitioning it to `done` and releasing any active claim. Equivalent to `fb verify <id> [--force]`.
+
+**Request:**
+```http
+POST /api/tasks/fb-12/verify HTTP/1.1
+Cookie: fb_session=...
+X-Requested-With: fleetboard
+Content-Type: application/json
+
+{
+  "force": false
+}
+```
+
+**Payload:**
+- `force` (boolean, optional, default `false`): If `true`, allows verifying code tasks that lack commit evidence.
+
+**Response (`200 OK`):**
+```json
+{
+  "v": 1,
+  "ok": true,
+  "data": {
+    "task": {
+      "id": "fb-12",
+      "status": "done",
+      "claim": null,
+      ...
+    }
+  }
+}
+```
+
+**Errors:**
+- `409 Conflict` (`BAD_TRANSITION`): Task is not in `review`, or is a `code` task without commit evidence and `force` is not set.
+
+---
+
+### `POST /api/tasks/:id/reject`
+Rejects a task in `review` back to `in_progress` with a required comment note. The active claim remains with the same agent. Equivalent to `fb reject <id> <comment>`.
+
+**Request:**
+```http
+POST /api/tasks/fb-12/reject HTTP/1.1
+Cookie: fb_session=...
+X-Requested-With: fleetboard
+Content-Type: application/json
+
+{
+  "comment": "Edge cases around token expiration are unhandled"
+}
+```
+
+**Payload:**
+- `comment` (string, required): Explanation for rejection. (Also accepts `body` or `text`).
+
+**Response (`200 OK`):**
+```json
+{
+  "v": 1,
+  "ok": true,
+  "data": {
+    "task": {
+      "id": "fb-12",
+      "status": "in_progress",
+      ...
+    }
+  }
+}
+```
+
+**Errors:**
+- `400 Bad Request` (`USAGE`): `comment` is empty or missing.
+- `409 Conflict` (`BAD_TRANSITION`): Task is not in `review`.
+
+---
+
+### `POST /api/tasks/:id/release`
+Releases the active claim on an `in_progress` task, transitioning it back to `todo`. Equivalent to `fb release <id>`.
+
+**Request:**
+```http
+POST /api/tasks/fb-12/release HTTP/1.1
+Cookie: fb_session=...
+X-Requested-With: fleetboard
+```
+
+**Response (`200 OK`):**
+```json
+{
+  "v": 1,
+  "ok": true,
+  "data": {
+    "task": {
+      "id": "fb-12",
+      "status": "todo",
+      "claim": null,
+      ...
+    }
+  }
+}
+```
+
+**Errors:**
+- `409 Conflict` (`BAD_TRANSITION`): Task is not in `in_progress` or has no active claim.
+
+---
+
+### `POST /api/tasks/:id/steal`
+Takes over an active claim or reassigns it to another actor. Equivalent to `fb claim <id> --steal [--for <actor>]`.
+
+**Request:**
+```http
+POST /api/tasks/fb-12/steal HTTP/1.1
+Cookie: fb_session=...
+X-Requested-With: fleetboard
+Content-Type: application/json
+
+{
+  "for": "claude 60a1168"
+}
+```
+
+**Payload:**
+- `for` (string, optional): Target actor spec (numeric id, external id, or label). If omitted, the claim is assigned to the human operator. (Also accepts `for_actor` or `actor`).
+
+**Response (`200 OK`):**
+```json
+{
+  "v": 1,
+  "ok": true,
+  "data": {
+    "task": {
+      "id": "fb-12",
+      "claim": {
+        "actor": {
+          "label": "claude 60a1168",
+          ...
+        },
+        ...
+      },
+      ...
+    }
+  }
+}
+```
+
+**Errors:**
+- `404 Not Found` (`NOT_FOUND`): Target actor specified by `for` does not exist.
+- `409 Conflict` (`BAD_TRANSITION`): Task has no active claim to steal.
+
+---
+
+### `POST /api/tasks/:id/drop`
+Drops a non-terminal task. Equivalent to `fb drop <id> [--reason …]`.
+
+**Request:**
+```http
+POST /api/tasks/fb-12/drop HTTP/1.1
+Cookie: fb_session=...
+X-Requested-With: fleetboard
+Content-Type: application/json
+
+{
+  "reason": "Superseded by architectural change"
+}
+```
+
+**Payload:**
+- `reason` (string, optional): Reason for dropping the task.
+
+**Response (`200 OK`):**
+```json
+{
+  "v": 1,
+  "ok": true,
+  "data": {
+    "task": {
+      "id": "fb-12",
+      "status": "dropped",
+      ...
+    }
+  }
+}
+```
+
+**Errors:**
+- `409 Conflict` (`BAD_TRANSITION`): Task is already terminal (`done` or `dropped`).
+
+---
+
+### `POST /api/tasks/:id/reopen`
+Reopens a terminal (`done` or `dropped`) task, transitioning it back to `todo`. Equivalent to `fb reopen <id>`.
+
+**Request:**
+```http
+POST /api/tasks/fb-12/reopen HTTP/1.1
+Cookie: fb_session=...
+X-Requested-With: fleetboard
+```
+
+**Response (`200 OK`):**
+```json
+{
+  "v": 1,
+  "ok": true,
+  "data": {
+    "task": {
+      "id": "fb-12",
+      "status": "todo",
+      ...
+    }
+  }
+}
+```
+
+**Errors:**
+- `409 Conflict` (`BAD_TRANSITION`): Task is not terminal (`done` or `dropped`).
+
+---
+
+### `POST /api/tasks/:id/notes` & `POST /api/tasks/:id/comment`
+Appends a note or comment to a task. Equivalent to `fb note <id> "…" [--kind …]`.
+
+**Request:**
+```http
+POST /api/tasks/fb-12/comment HTTP/1.1
+Cookie: fb_session=...
+X-Requested-With: fleetboard
+Content-Type: application/json
+
+{
+  "comment": "Checked with product team, priority confirmed."
+}
+```
+
+**Payload:**
+- `body` or `comment` or `text` (string, required): Body of the note/comment.
+- `kind` (string, optional, default `"comment"`): Note kind (`"comment"`, `"handoff"`, or `"finding"`).
+
+**Response (`200 OK`):**
+```json
+{
+  "v": 1,
+  "ok": true,
+  "data": {
+    "task": {
+      "id": "fb-12",
+      ...
+    }
+  }
+}
+```
+
+**Errors:**
+- `400 Bad Request` (`USAGE`): Empty body or invalid `kind`.
+- `404 Not Found` (`NOT_FOUND`): Task does not exist.

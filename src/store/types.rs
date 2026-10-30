@@ -14,6 +14,7 @@ pub struct Ctx {
     pub pid: u32,
     pub ppid: u32,
     pub proc_chain: String,
+    pub source: Option<String>,
 }
 
 /// Where the caller is: host plus the git toplevel (or cwd outside git).
@@ -144,6 +145,7 @@ pub struct EventRow {
     pub proc_chain: Option<String>,
     pub created_at: DateTime<Utc>,
     pub on_behalf_of: Option<String>,
+    pub source: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
