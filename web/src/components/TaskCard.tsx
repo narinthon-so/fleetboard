@@ -144,8 +144,18 @@ export function TaskCard({ task, isSelected = false, onClick, isReadOnly = false
                     )}
                   </>
                 ) : (
-                  <span className="text-[var(--signal-no-evidence)] font-semibold flex items-center gap-1">
-                    <SignalIcon signal="no-evidence" />
+                  <span
+                    className={cn(
+                      'flex items-center gap-1',
+                      status === 'review'
+                        ? 'text-[var(--signal-no-evidence)] font-semibold'
+                        : 'text-[var(--muted-foreground)]'
+                    )}
+                  >
+                    <SignalIcon
+                      signal="no-evidence"
+                      className={status === 'in_progress' ? 'text-[var(--muted-foreground)] font-normal' : undefined}
+                    />
                   </span>
                 )
               ) : (
@@ -154,7 +164,15 @@ export function TaskCard({ task, isSelected = false, onClick, isReadOnly = false
                 </span>
               )
             ) : (
-              <span className="text-[var(--signal-no-evidence)]">no commits</span>
+              <span
+                className={
+                  status === 'review'
+                    ? 'text-[var(--signal-no-evidence)] font-semibold'
+                    : 'text-[var(--muted-foreground)]'
+                }
+              >
+                no commits
+              </span>
             )}
           </div>
         )}
