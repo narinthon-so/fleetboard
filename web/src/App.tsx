@@ -305,7 +305,7 @@ function BoardApp() {
         if (task && task.status === 'review') {
           e.preventDefault();
           const hasEvidence = task.evidence && task.evidence.commits > 0;
-          if (!hasEvidence || task.derived.no_evidence) {
+          if (task.kind === 'code' && (!hasEvidence || task.derived.no_evidence)) {
             setKeyVerifyTask({
               id: task.id,
               force: true,
@@ -315,7 +315,9 @@ function BoardApp() {
             setKeyVerifyTask({
               id: task.id,
               force: false,
-              description: `Verify task ${task.id} (${task.evidence?.commits} commits) and mark it done?`,
+              description: task.kind === 'note'
+                ? `Verify note ${task.id} and mark it done?`
+                : `Verify task ${task.id} (${task.evidence?.commits} commits) and mark it done?`,
             });
           }
         }

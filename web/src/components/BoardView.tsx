@@ -245,7 +245,7 @@ export function BoardView({
     if (sourceColumn === 'review' && targetColumn === 'done') {
       const hasEvidence = task.evidence && task.evidence.commits > 0;
       console.log('CHECK EVIDENCE:', { id: task.id, hasEvidence, commits: task.evidence?.commits, no_evidence: task.derived?.no_evidence });
-      if (!hasEvidence || task.derived.no_evidence) {
+      if (task.kind === 'code' && (!hasEvidence || task.derived.no_evidence)) {
         console.log('SETTING PENDING VERIFY TASK:', task.id);
         setPendingVerifyTask(task);
       } else {
