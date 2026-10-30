@@ -63,6 +63,8 @@ function BoardApp() {
     return match ? match[1] : null;
   });
 
+  const [focusedTaskId, setFocusedTaskId] = useState<string | null>(null);
+
   // Keyboard shortcuts dialog state
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
 
@@ -262,12 +264,12 @@ function BoardApp() {
         // Next card
         e.preventDefault();
         if (taskIdsList.length === 0) return;
-        if (!selectedTaskId) {
-          setSelectedTaskId(taskIdsList[0]);
+        if (!focusedTaskId) {
+          setFocusedTaskId(taskIdsList[0]);
         } else {
-          const idx = taskIdsList.indexOf(selectedTaskId);
+          const idx = taskIdsList.indexOf(focusedTaskId);
           if (idx >= 0 && idx < taskIdsList.length - 1) {
-            setSelectedTaskId(taskIdsList[idx + 1]);
+            setFocusedTaskId(taskIdsList[idx + 1]);
           }
         }
         return;
@@ -277,20 +279,21 @@ function BoardApp() {
         // Prev card
         e.preventDefault();
         if (taskIdsList.length === 0) return;
-        if (!selectedTaskId) {
-          setSelectedTaskId(taskIdsList[taskIdsList.length - 1]);
+        if (!focusedTaskId) {
+          setFocusedTaskId(taskIdsList[taskIdsList.length - 1]);
         } else {
-          const idx = taskIdsList.indexOf(selectedTaskId);
+          const idx = taskIdsList.indexOf(focusedTaskId);
           if (idx > 0) {
-            setSelectedTaskId(taskIdsList[idx - 1]);
+            setFocusedTaskId(taskIdsList[idx - 1]);
           }
         }
         return;
       }
 
       if (e.key === 'Enter') {
-        if (selectedTaskId) {
-          // Card is open or selected
+        if (!selectedTaskId && focusedTaskId && taskIdsList.includes(focusedTaskId)) {
+          e.preventDefault();
+          setSelectedTaskId(focusedTaskId);
         }
         return;
       }
@@ -336,7 +339,7 @@ function BoardApp() {
       window.removeEventListener('keydown', handleKeyDown);
       if (gTimeout) clearTimeout(gTimeout);
     };
-  }, [boardData, selectedTaskId, taskIdsList, isShortcutsOpen, keyVerifyTask, keyRejectTask, isReadOnly]);
+  }, [boardData, selectedTaskId, focusedTaskId, taskIdsList, isShortcutsOpen, keyVerifyTask, keyRejectTask, isReadOnly]);
 
   async function handleKeyVerifyConfirm() {
     if (!keyVerifyTask) return;
@@ -430,7 +433,7 @@ function BoardApp() {
         {/* Needs-me strip: always visible, ignoring column filters */}
         <NeedsMeStrip
           tasks={boardData?.tasks || []}
-          onSelectTask={(id) => setSelectedTaskId(id)}
+          onSelectTask={(id) => { setFocusedTaskId(id); setSelectedTaskId(id); }}
         />
 
         {/* Kanban Board Columns View */}
@@ -439,8 +442,8 @@ function BoardApp() {
             boardData={boardData || null}
             filters={filters}
             isLoading={isLoading && !boardData}
-            selectedTaskId={selectedTaskId}
-            onSelectTask={(id) => setSelectedTaskId(id)}
+            selectedTaskId={selectedTaskId || focusedTaskId}
+            onSelectTask={(id) => { setFocusedTaskId(id); setSelectedTaskId(id); }}
             isReadOnly={isReadOnly}
           />
         </main>
