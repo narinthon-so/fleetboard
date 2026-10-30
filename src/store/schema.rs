@@ -1,7 +1,7 @@
 //! Schema and migrations. `PRAGMA user_version` is the number of applied migrations.
 
 /// Migrations in order; index + 1 is the schema version they produce.
-pub const MIGRATIONS: &[&str] = &[V1];
+pub const MIGRATIONS: &[&str] = &[V1, V2];
 
 pub const SCHEMA_VERSION: i64 = MIGRATIONS.len() as i64;
 
@@ -108,4 +108,14 @@ CREATE TABLE events (
 INSERT INTO actors (kind, provider, external_id, label, trusted, first_seen, last_seen)
 VALUES ('human', NULL, 'human', 'human', 0,
         strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'));
+"#;
+
+const V2: &str = r#"
+CREATE TABLE delegations (
+  id          INTEGER PRIMARY KEY,
+  actor_id    INTEGER NOT NULL REFERENCES actors(id),
+  action      TEXT NOT NULL CHECK (action IN ('promote','approve','verify','reject','release','steal','drop','reopen')),
+  created_at  TEXT NOT NULL,
+  UNIQUE (actor_id, action)
+);
 "#;

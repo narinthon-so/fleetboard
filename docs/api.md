@@ -373,7 +373,8 @@ Cookie: fb_session=...
           "pid": 1234,
           "ppid": 1230,
           "proc_chain": "bash < codex",
-          "created_at": "2026-10-30T09:00:00Z"
+          "created_at": "2026-10-30T09:00:00Z",
+          "on_behalf_of": null
         },
         {
           "id": 2,
@@ -384,7 +385,8 @@ Cookie: fb_session=...
           "pid": 1240,
           "ppid": 1230,
           "proc_chain": "bash < codex",
-          "created_at": "2026-10-30T10:00:00Z"
+          "created_at": "2026-10-30T10:00:00Z",
+          "on_behalf_of": null
         }
       ],
       "created_by": { ... },

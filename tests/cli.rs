@@ -784,3 +784,192 @@ fn done_text_shows_evidence_line_and_warning_when_no_commits() {
         "fb-2 is now in review\nwarning: claimed, no commits. Explain why in a handoff note.\n"
     );
 }
+
+#[test]
+fn delegation_lifecycle_and_rights_enforcement() {
+    let e = Env::new();
+    e.ok(A, &["add", "Draft task"]); // lands as draft fb-1
+
+    // Non-delegated agent gets HUMAN_ONLY
+    e.fails(A, &["promote", "fb-1"], 4, "HUMAN_ONLY");
+
+    // Agent cannot delegate or undelegate (human-only commands)
+    e.fails(
+        A,
+        &["delegate", "agent-aaaaaaa", "--allow", "promote"],
+        4,
+        "HUMAN_ONLY",
+    );
+    e.fails(A, &["undelegate", "agent-aaaaaaa"], 4, "HUMAN_ONLY");
+
+    // Human delegates promote and verify to A
+    let d = e.ok(
+        H,
+        &["delegate", "agent-aaaaaaa", "--allow", "promote,verify"],
+    );
+    let del = d["delegated"].as_array().unwrap();
+    assert!(del.iter().any(|v| v == "promote"));
+    assert!(del.iter().any(|v| v == "verify"));
+
+    // whoami lists delegated rights
+    let w_text = e.text(A, &["whoami"]);
+    assert!(
+        w_text.stdout.contains("delegated:   promote, verify")
+            || w_text.stdout.contains("delegated:   verify, promote"),
+        "{}",
+        w_text.stdout
+    );
+    let w_json = e.ok(A, &["whoami"]);
+    let w_del = w_json["caller"]["delegated"].as_array().unwrap();
+    assert_eq!(w_del.len(), 2);
+
+    // Delegated agent can run promote WITHOUT --as-human
+    e.ok(A, &["promote", "fb-1"]);
+    assert_eq!(e.ok(H, &["show", "fb-1"])["task"]["status"], "todo");
+
+    // Audit event for promote carries on_behalf_of = human
+    let db = rusqlite::Connection::open(e.home.path().join("board.db")).unwrap();
+    let (data_str, actor_id): (String, i64) = db
+        .query_row(
+            "SELECT data, actor_id FROM events WHERE task_id = 1 AND type = 'promoted'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    let data: serde_json::Value = serde_json::from_str(&data_str).unwrap();
+    assert_eq!(data["on_behalf_of"], "human");
+    assert_ne!(actor_id, 1); // Not the human actor, it's agent A
+
+    // Delegated agent cannot run unallowed verbs (e.g. approve)
+    e.fails(A, &["approve", "fb-1"], 4, "HUMAN_ONLY");
+
+    // Even delegated agent cannot run delegate/undelegate
+    e.fails(
+        A,
+        &["delegate", "agent-bbbbbbb", "--allow", "promote"],
+        4,
+        "HUMAN_ONLY",
+    );
+    e.fails(A, &["undelegate", "agent-aaaaaaa"], 4, "HUMAN_ONLY");
+
+    // fb show / History displays '<label> on behalf of human'
+    let show_text = e.text(A, &["show", "fb-1"]);
+    assert!(
+        show_text.stdout.contains("on behalf of human"),
+        "{}",
+        show_text.stdout
+    );
+
+    // Partial undelegate revokes immediately
+    e.ok(H, &["undelegate", "agent-aaaaaaa", "--allow", "promote"]);
+    e.fails(A, &["promote", "fb-1"], 4, "HUMAN_ONLY");
+
+    // Verify is still allowed
+    e.ok(A, &["claim", "fb-1"]);
+    e.ok(A, &["done", "fb-1"]);
+    // verify with force because no commits
+    e.ok(A, &["verify", "fb-1", "--force"]);
+    assert_eq!(e.ok(H, &["show", "fb-1"])["task"]["status"], "done");
+
+    // Full undelegate revokes everything immediately
+    e.ok(H, &["undelegate", "agent-aaaaaaa"]);
+    let w_text2 = e.text(A, &["whoami"]);
+    assert!(
+        w_text2.stdout.contains("delegated:   (none)"),
+        "{}",
+        w_text2.stdout
+    );
+    let w_json2 = e.ok(A, &["whoami"]);
+    assert_eq!(w_json2["caller"]["delegated"].as_array().unwrap().len(), 0);
+
+    // Human undelegate delegation itself and removal are logged
+    let del_count: i64 = db
+        .query_row(
+            "SELECT COUNT(*) FROM events WHERE type = 'delegated'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(del_count, 1);
+    let undel_count: i64 = db
+        .query_row(
+            "SELECT COUNT(*) FROM events WHERE type = 'undelegated'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(undel_count, 2);
+}
+
+#[test]
+fn delegation_all_allowed_verbs() {
+    let e = Env::new();
+    // Register agent A and B
+    e.ok(A, &["add", "A's task"]);
+    e.ok(B, &["add", "B's task"]);
+
+    // Delegate all 8 verbs to A
+    e.ok(
+        H,
+        &[
+            "delegate",
+            "agent-aaaaaaa",
+            "--allow",
+            "promote,approve,verify,reject,release,steal,drop,reopen",
+        ],
+    );
+
+    // 1. promote
+    e.ok(A, &["promote", "fb-1"]);
+
+    // 2. steal (claim --steal)
+    e.ok(B, &["claim", "fb-1"]);
+    e.ok(A, &["claim", "fb-1", "--steal"]);
+
+    // 3. approve
+    // Create task with plan approval
+    e.ok(H, &["add", "Needs plan", "--plan-approval"]);
+    e.ok(A, &["claim", "fb-3"]);
+    e.ok(A, &["plan", "fb-3", "The plan"]);
+    e.ok(A, &["approve", "fb-3"]);
+
+    // 4. release
+    e.ok(A, &["release", "fb-3"]);
+    assert_eq!(e.ok(H, &["show", "fb-3"])["task"]["status"], "todo");
+
+    // 5. reject
+    e.ok(A, &["claim", "fb-3"]);
+    e.ok(A, &["done", "fb-3"]);
+    e.ok(A, &["reject", "fb-3", "need more tests"]);
+    assert_eq!(e.ok(H, &["show", "fb-3"])["task"]["status"], "in_progress");
+
+    // 6. verify
+    e.ok(A, &["done", "fb-3"]);
+    e.ok(A, &["verify", "fb-3", "--force"]);
+    assert_eq!(e.ok(H, &["show", "fb-3"])["task"]["status"], "done");
+
+    // 7. reopen
+    e.ok(A, &["reopen", "fb-3"]);
+    assert_eq!(e.ok(H, &["show", "fb-3"])["task"]["status"], "todo");
+
+    // 8. drop
+    e.ok(A, &["drop", "fb-3", "--reason", "obsolete"]);
+    assert_eq!(e.ok(H, &["show", "fb-3"])["task"]["status"], "dropped");
+
+    // Check that audit events for these carried on_behalf_of = human
+    let db = rusqlite::Connection::open(e.home.path().join("board.db")).unwrap();
+    let mut stmt = db
+        .prepare("SELECT type, data FROM events WHERE task_id = 3 AND data LIKE '%on_behalf_of%'")
+        .unwrap();
+    let event_types: Vec<String> = stmt
+        .query_map([], |r| r.get(0))
+        .unwrap()
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .unwrap();
+    assert!(event_types.contains(&"approved".to_string()));
+    assert!(event_types.contains(&"released".to_string()));
+    assert!(event_types.contains(&"rejected".to_string()));
+    assert!(event_types.contains(&"verified".to_string()));
+    assert!(event_types.contains(&"reopened".to_string()));
+    assert!(event_types.contains(&"dropped".to_string()));
+}

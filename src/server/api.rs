@@ -383,6 +383,7 @@ pub async fn task_detail_handler(
                 "ppid": e.ppid,
                 "proc_chain": e.proc_chain,
                 "created_at": ts(e.created_at),
+                "on_behalf_of": e.on_behalf_of,
             }))
             .collect::<Vec<_>>()
     );
