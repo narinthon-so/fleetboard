@@ -172,7 +172,14 @@ export function SignalIcon({
       );
     case 'no-evidence':
       return (
-        <span title={label || 'No commits'} className={cn('inline-flex items-center gap-1 text-[var(--signal-no-evidence)]', className)}>
+        <span
+          title={label || 'No commits'}
+          className={cn(
+            'inline-flex items-center gap-1',
+            className?.includes('text-') ? undefined : 'text-[var(--signal-no-evidence)]',
+            className
+          )}
+        >
           <GitCommitVertical className="w-3.5 h-3.5" />
           <span className="text-xs">no commits</span>
         </span>
@@ -227,8 +234,7 @@ export function RuntimeStatusBadge({
   } else if (isPermission) {
     colorClass = 'text-[var(--runtime-permission)] border-[var(--runtime-permission)]/30 bg-[var(--runtime-permission)]/10';
     dotColorClass = 'bg-[var(--runtime-permission)] animate-pulse';
-    const count = pendingPermissions > 0 ? pendingPermissions : 1;
-    label = `waiting-for-permission (${count})`;
+    label = 'permission';
     Icon = ShieldAlert;
   } else if (isGone) {
     colorClass = 'text-[var(--runtime-gone)] border-[var(--runtime-gone)]/30 bg-[var(--runtime-gone)]/10';
@@ -241,7 +247,11 @@ export function RuntimeStatusBadge({
     <span
       data-testid="runtime-status-badge"
       data-runtime-status={normalized}
-      title={`Runtime status: ${label}`}
+      title={
+        isPermission && pendingPermissions > 0
+          ? `Runtime status: ${label} (${pendingPermissions} pending)`
+          : `Runtime status: ${label}`
+      }
       className={cn(
         'inline-flex items-center gap-1 font-mono text-[10px] px-1 py-0.5 rounded border select-none leading-none shrink-0',
         colorClass,

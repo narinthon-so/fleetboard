@@ -11,7 +11,9 @@ async function main() {
   const screenshotsDir = path.resolve('../docs/screenshots');
   fs.mkdirSync(screenshotsDir, { recursive: true });
 
-  const fbBin = path.resolve('../target/debug/fb');
+  const fbBin = fs.existsSync(path.resolve('./target/debug/fb'))
+    ? path.resolve('./target/debug/fb')
+    : path.resolve('../target/debug/fb');
 
   // 1. Initialize git repo
   execSync(`git init -b main "${tmpRepo}"`);
@@ -227,8 +229,8 @@ esac
   await t3Badge.waitFor({ state: 'visible' });
   const t3Text = await t3Badge.innerText();
   console.log(`✓ Permission badge text: "${t3Text}"`);
-  if (!t3Text.includes('waiting-for-permission (1)')) {
-    throw new Error(`Expected "waiting-for-permission (1)", got "${t3Text}"`);
+  if (!t3Text.includes('permission')) {
+    throw new Error(`Expected "permission", got "${t3Text}"`);
   }
 
   // Verify Needs-me chip for Task 3
