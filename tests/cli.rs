@@ -182,6 +182,28 @@ fn claim_done_verify_with_git_evidence() {
 }
 
 #[test]
+fn review_claim_keeps_its_branch_and_evidence_when_agent_starts_next_task() {
+    let e = Env::new();
+    let a = e.todo("Task A");
+    let b = e.todo("Task B");
+    e.ok(A, &["claim", &a]);
+    e.git(&["checkout", "-q", "-b", "task/A"]);
+    e.write("a.txt", "A\n");
+    e.commit("implement A");
+    e.ok(A, &["done", &a]);
+
+    e.git(&["checkout", "-q", "main"]);
+    e.ok(A, &["claim", &b]);
+    e.git(&["checkout", "-q", "-b", "task/B"]);
+    e.ok(A, &["note", &b, "Working on B"]);
+    let d = e.ok(A, &["show", &a, "--evidence"]);
+    assert_eq!(d["task"]["claim"]["branch"], "task/A");
+    assert_eq!(d["task"]["evidence"]["commits"], 1);
+    let d = e.ok(A, &["show", &b]);
+    assert_eq!(d["task"]["claim"]["branch"], "task/B");
+}
+
+#[test]
 fn done_without_commits_goes_to_review_flagged_and_verify_needs_force() {
     let e = Env::new();
     e.ok(H, &["add", "Empty"]);
