@@ -129,6 +129,8 @@ enum Cmd {
     },
     /// Workflow guide plus your active claim and its latest handoff
     Prime,
+    /// Print caller identity, host, project and instance
+    Whoami,
     /// Edit dependencies
     Dep {
         #[command(subcommand)]
@@ -555,6 +557,7 @@ fn dispatch(s: &Session) -> Result<Out> {
             list_out(s, tasks, *evidence)
         }
         Cmd::Prime => prime_out(s),
+        Cmd::Whoami => whoami_out(s),
         Cmd::Dep { cmd } => {
             let (task, blocker, add) = match cmd {
                 DepCmd::Add { task, blocker } => (parse_id(task)?, parse_id(blocker)?, true),
@@ -1123,4 +1126,50 @@ fn prime_out(s: &Session) -> Result<Out> {
         }),
         text,
     })
+}
+
+fn whoami_out(s: &Session) -> Result<Out> {
+    let project = gitinfo::project_key(&s.cwd);
+    let instance = gitinfo::instance(&s.cwd);
+
+    let prov = s.actor.provider.as_deref().unwrap_or("(none)");
+    let proj = project.as_deref().unwrap_or("(none)");
+    let inst = match &instance {
+        Some(i) => {
+            let branch = i
+                .branch
+                .as_deref()
+                .map(|b| format!(" ({b})"))
+                .unwrap_or_default();
+            format!("{}{branch}", i.toplevel.display())
+        }
+        None => "(none)".to_string(),
+    };
+
+    let text = format!(
+        "kind:        {}\n\
+         provider:    {}\n\
+         external_id: {}\n\
+         label:       {}\n\
+         trusted:     {}\n\
+         host:        {}\n\
+         project:     {}\n\
+         instance:    {}\n",
+        s.actor.kind, prov, s.actor.external_id, s.actor.label, s.actor.trusted, s.host, proj, inst
+    );
+
+    let data = json!({
+        "caller": {
+            "kind": s.actor.kind,
+            "provider": s.actor.provider,
+            "external_id": s.actor.external_id,
+            "label": s.actor.label,
+            "trusted": s.actor.trusted,
+        },
+        "host": s.host,
+        "project": project,
+        "instance": instance,
+    });
+
+    Ok(Out { data, text })
 }

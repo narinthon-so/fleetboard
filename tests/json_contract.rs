@@ -187,4 +187,7 @@ fn contract_snapshots() {
 
     let r = e.run(H, &["verify", "fb-1"]);
     insta::assert_snapshot!("verify", snap(&e, &r));
+
+    let r = e.run(A, &["whoami"]);
+    insta::assert_snapshot!("whoami", snap(&e, &r));
 }

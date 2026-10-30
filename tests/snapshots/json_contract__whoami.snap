@@ -1,0 +1,25 @@
+---
+source: tests/json_contract.rs
+expression: "snap(&e, &r)"
+---
+{
+  "data": {
+    "caller": {
+      "external_id": "agent-aaaaaaa",
+      "kind": "agent",
+      "label": "<label>",
+      "provider": "codex",
+      "trusted": false
+    },
+    "host": "<host>",
+    "instance": {
+      "branch": "feature",
+      "head": "<sha>",
+      "host": "<host>",
+      "toplevel": "<work>"
+    },
+    "project": "github.com/Org/Repo"
+  },
+  "ok": true,
+  "v": 1
+}

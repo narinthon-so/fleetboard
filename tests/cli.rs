@@ -701,3 +701,59 @@ fn concurrent_processes_claim_with_exactly_one_winner() {
     assert_eq!(codes.iter().filter(|c| **c == 0).count(), 1, "{codes:?}");
     assert!(codes.iter().all(|c| *c == 0 || *c == 3), "{codes:?}");
 }
+
+#[test]
+fn whoami_prints_human_block_and_envelope_and_works_outside_git() {
+    let e = Env::new();
+
+    // 1. Text mode inside git as agent
+    let r_text = e.text(A, &["whoami"]);
+    assert_eq!(r_text.code, 0);
+    assert!(r_text.stdout.contains("kind:        agent"));
+    assert!(r_text.stdout.contains("provider:    codex"));
+    assert!(r_text.stdout.contains("external_id: agent-aaaaaaa"));
+    assert!(r_text.stdout.contains("trusted:     false"));
+    assert!(r_text.stdout.contains("project:     github.com/Org/Repo"));
+    assert!(
+        r_text
+            .stdout
+            .contains(&format!("instance:    {} (main)", e.work_path.display()))
+    );
+
+    // 2. JSON mode inside git as agent
+    let d = e.ok(A, &["whoami"]);
+    assert_eq!(d["caller"]["kind"], "agent");
+    assert_eq!(d["caller"]["provider"], "codex");
+    assert_eq!(d["caller"]["external_id"], "agent-aaaaaaa");
+    assert_eq!(d["caller"]["trusted"], false);
+    assert!(!d["caller"]["label"].as_str().unwrap().is_empty());
+    assert!(!d["host"].as_str().unwrap().is_empty());
+    assert_eq!(d["project"], "github.com/Org/Repo");
+    assert_eq!(d["instance"]["branch"], "main");
+    assert_eq!(d["instance"]["head"], e.head());
+    assert_eq!(d["instance"]["toplevel"], e.work_path.to_str().unwrap());
+
+    // 3. Outside git
+    let elsewhere = tempfile::tempdir().unwrap();
+    let r_json = e.run_in(elsewhere.path(), A, &["whoami"]);
+    assert_eq!(r_json.data()["project"], json!(null));
+    assert_eq!(r_json.data()["instance"], json!(null));
+    assert_eq!(r_json.data()["caller"]["kind"], "agent");
+
+    let mut c_text = e.cmd_in(elsewhere.path(), A, &["whoami"]);
+    let out = c_text.output().unwrap();
+    let out_str = String::from_utf8_lossy(&out.stdout);
+    assert!(out_str.contains("project:     (none)"));
+    assert!(out_str.contains("instance:    (none)"));
+
+    // 4. Human
+    let d_human = e.ok(H, &["whoami"]);
+    assert_eq!(d_human["caller"]["kind"], "human");
+    assert_eq!(d_human["caller"]["provider"], json!(null));
+    assert_eq!(d_human["caller"]["external_id"], "human");
+    assert_eq!(d_human["caller"]["trusted"], false);
+
+    let r_human_text = e.text(H, &["whoami"]);
+    assert!(r_human_text.stdout.contains("kind:        human"));
+    assert!(r_human_text.stdout.contains("provider:    (none)"));
+}
