@@ -16,7 +16,7 @@ use fleetboard::store::{
 };
 use serde_json::{Value, json};
 
-use crate::config::{self, Config};
+use fleetboard::config::{self, Config};
 
 #[derive(Parser)]
 #[command(
@@ -167,6 +167,12 @@ enum Cmd {
         #[command(subcommand)]
         cmd: ProjectCmd,
     },
+    /// Start the loopback HTTP server and web UI
+    Serve {
+        /// Port to listen on (default: 7878)
+        #[arg(long, default_value_t = 7878)]
+        port: u16,
+    },
 }
 
 #[derive(Subcommand)]
@@ -295,9 +301,65 @@ fn now() -> DateTime<Utc> {
     Utc::now()
 }
 
+fn serve_cmd(cli: &Cli, home: &Path, port: u16) -> Result<Out> {
+    let token = fleetboard::server::auth::generate_random_token();
+    let bind_addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| FbError::Store(format!("failed to start tokio runtime: {e}")))?;
+
+    rt.block_on(async {
+        let listener = tokio::net::TcpListener::bind(bind_addr)
+            .await
+            .map_err(|e| FbError::Store(format!("failed to bind to {bind_addr}: {e}")))?;
+        let local_addr = listener
+            .local_addr()
+            .map_err(|e| FbError::Store(format!("failed to get local address: {e}")))?;
+
+        if cli.json {
+            println!(
+                "{}",
+                json!({
+                    "v": 1,
+                    "ok": true,
+                    "data": {
+                        "url": format!("http://{local_addr}"),
+                        "port": local_addr.port(),
+                        "token": token,
+                    }
+                })
+            );
+        } else {
+            println!("fleetboard serving at http://{local_addr}");
+            println!("One-time login token: {token}");
+        }
+
+        let config = fleetboard::server::ServerConfig {
+            addr: local_addr,
+            token,
+            home: home.to_path_buf(),
+        };
+        let state = fleetboard::server::AppState::new(config)
+            .map_err(|e| FbError::Store(format!("failed to initialize server state: {e}")))?;
+
+        fleetboard::server::run_server(listener, state)
+            .await
+            .map_err(|e| FbError::Store(format!("server error: {e}")))
+    })?;
+
+    Ok(Out {
+        data: Value::Null,
+        text: String::new(),
+    })
+}
+
 fn execute(cli: &Cli) -> Result<Out> {
     let home = fb_home(cli)?;
     std::fs::create_dir_all(&home)?;
+    if let Cmd::Serve { port } = &cli.cmd {
+        return serve_cmd(cli, &home, *port);
+    }
     let cfg = config::load(&home)?;
     let db = SqliteBackend::open(&home.join("board.db"))?;
 
@@ -644,6 +706,7 @@ fn dispatch(s: &Session) -> Result<Out> {
                 data: json!({ "project": { "key": p.key, "alias": p.alias, "name": p.display() } }),
             })
         }
+        Cmd::Serve { .. } => unreachable!("serve handled in execute"),
     }
 }
 
