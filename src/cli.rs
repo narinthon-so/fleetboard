@@ -395,6 +395,7 @@ fn execute(cli: &Cli) -> Result<Out> {
             .map(|p| p.name.as_str())
             .collect::<Vec<_>>()
             .join(" < "),
+        source: None,
     };
     let actor = db.resolve_actor(&caller, &ctx)?;
     let loc = gitinfo::instance(&cwd).map(|i| Location {
