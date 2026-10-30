@@ -303,7 +303,7 @@ export function BoardView({
     }
 
     if (sourceColumn === 'blocked') {
-      toast(`${task.id} is blocked by incomplete dependencies (${task.blocked_by.join(', ')})`, 'warning');
+      toast(`${task.id} is blocked by incomplete dependencies (${task.blocked_by.map((dep) => dep.id).join(', ')})`, 'warning');
       return;
     }
 
