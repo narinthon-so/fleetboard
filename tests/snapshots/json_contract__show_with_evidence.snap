@@ -97,6 +97,7 @@ expression: "snap(&e, &r)"
           "kind": "handoff"
         }
       ],
+      "pending_permissions": null,
       "plan": "Add a token bucket.",
       "plan_approved_at": null,
       "priority": 1,
@@ -106,6 +107,8 @@ expression: "snap(&e, &r)"
         "name": "Repo"
       },
       "result": null,
+      "runtime": null,
+      "runtime_status": null,
       "status": "review",
       "ticket": {
         "key": "ABC-36",

@@ -49,6 +49,7 @@ expression: "snap(&e, &r)"
       "id": "fb-1",
       "kind": "code",
       "needs_plan_approval": false,
+      "pending_permissions": null,
       "plan": null,
       "plan_approved_at": null,
       "priority": 1,
@@ -58,6 +59,8 @@ expression: "snap(&e, &r)"
         "name": "Repo"
       },
       "result": null,
+      "runtime": null,
+      "runtime_status": null,
       "status": "in_progress",
       "ticket": {
         "key": "ABC-36",

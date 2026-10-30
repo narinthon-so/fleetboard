@@ -1407,6 +1407,9 @@ fn task_json(s: &Session, t: &TaskRow, d: &Derived) -> Value {
         })).collect::<Vec<_>>(),
         "claim": t.claim.as_ref().map(claim_json),
         "derived": d,
+        "runtime": null,
+        "runtime_status": null,
+        "pending_permissions": null,
         "created_by": t.created_by,
         "created_at": ts(t.created_at),
         "updated_at": ts(t.updated_at),
@@ -1763,4 +1766,36 @@ fn whoami_out(s: &Session) -> Result<Out> {
     });
 
     Ok(Out { data, text })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn absent_runtime_is_explicitly_null() {
+        let home = tempfile::tempdir().unwrap();
+        let s = create_session(home.path(), false).unwrap();
+        let task =
+            s.db.add_task(
+                &s.actor,
+                &NewTask {
+                    title: "Synthetic task".into(),
+                    goal: None,
+                    acceptance: None,
+                    kind: Kind::Code,
+                    priority: 2,
+                    blocked_by: vec![],
+                    ticket: None,
+                    project: None,
+                    needs_plan_approval: false,
+                },
+                &s.ctx,
+            )
+            .unwrap();
+        let value = task_json(&s, &task, &derive_for(&s, &task));
+        for key in ["runtime", "runtime_status", "pending_permissions"] {
+            assert_eq!(value.get(key), Some(&Value::Null), "{key}");
+        }
+    }
 }
