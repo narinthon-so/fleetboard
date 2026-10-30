@@ -210,6 +210,14 @@ Every human action logs `pid`, `ppid` and the process chain in `events`, so an
 agent that strips its environment to pass as the human is usually visible
 afterwards.
 
+### Delegation
+
+A human can delegate specific human-only rights to an agent actor with `fb delegate <actor> --allow <list>`. The allowed actions are any subset of `promote`, `approve`, `verify`, `reject`, `release`, `steal`, `drop`, `reopen`.
+
+A delegated agent can run those specific commands directly without `--as-human`; standard store and transition rules apply as they do for the human. Every action executed under delegation logs an event in the audit log with `actor_id` = delegate's actor id and `data.on_behalf_of = 'human'`. `fb show` and the web UI History view display delegated actions as `<actor> on behalf of human` (e.g., `claude 60a1168 on behalf of human`).
+
+Delegation is revoked via `fb undelegate <actor> [--allow <list>]`. When `--allow` is omitted, all delegated rights for that actor are revoked immediately. `delegate` and `undelegate` themselves are strictly human-only and cannot be delegated. Delegation grants and revocations are logged as audit events (`delegated` / `undelegated`).
+
 **Known limits** (one person's machine; the guard stops eager agents, not attackers):
 
 - An agent can strip its environment *and* run outside its own process tree (e.g. through `setsid` or a scheduler). The process chain then looks human.
@@ -275,6 +283,7 @@ Every command with `--json` prints one JSON value on stdout and nothing else.
 | `fb show <id> [--evidence]` | Full task: fields, deps, claim history, notes, evidence. |
 | `fb list [--status …] [--project …] [--agent …] [--host …] [--needs-me] [--all]` | Filtered list. |
 | `fb prime` | Workflow guide for agents plus the caller's active claim and its latest handoff note. |
+| `fb whoami` | Print caller identity, host, project, instance, and delegated rights. |
 | `fb dep add <task> <blocker>` / `fb dep rm …` | Edit dependencies; refuses cycles. |
 
 ### Human only (`--as-human`)
@@ -289,6 +298,8 @@ Every command with `--json` prints one JSON value on stdout and nothing else.
 | `fb claim <id> --steal [--for <actor>]` | Take over or reassign a claim. |
 | `fb drop <id> [--reason …]` / `fb reopen <id>` | End or reopen a task. |
 | `fb trust <actor>` / `fb untrust <actor>` | Grant or remove the tracker role. |
+| `fb delegate <actor> --allow <list>` | Grant rights to act on human behalf (promote, approve, verify, reject, release, steal, drop, reopen). |
+| `fb undelegate <actor> [--allow …]` | Revoke rights to act on human behalf (all if --allow is omitted). |
 | `fb project alias <key> <alias>` | Rename a project for display. |
 
 ### JSON envelope

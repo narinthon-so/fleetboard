@@ -83,6 +83,10 @@ impl SqliteBackend {
         tx.commit()?;
         Ok(out)
     }
+
+    pub fn has_delegation(&self, actor_id: i64, action: &str) -> Result<bool> {
+        tx_has_delegation(&self.conn, actor_id, action)
+    }
 }
 
 fn user_version(conn: &Connection) -> Result<i64> {
@@ -126,6 +130,24 @@ fn load_actor(conn: &Connection, id: i64) -> Result<Actor> {
     )
     .optional()?
     .ok_or_else(|| FbError::NotFound(format!("no actor with id {id}")))
+}
+
+fn tx_get_delegations(conn: &Connection, actor_id: i64) -> Result<Vec<String>> {
+    let mut stmt =
+        conn.prepare("SELECT action FROM delegations WHERE actor_id = ?1 ORDER BY action")?;
+    let list = stmt
+        .query_map([actor_id], |r| r.get::<_, String>(0))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(list)
+}
+
+fn tx_has_delegation(conn: &Connection, actor_id: i64, action: &str) -> Result<bool> {
+    let count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM delegations WHERE actor_id = ?1 AND action = ?2",
+        params![actor_id, action],
+        |r| r.get(0),
+    )?;
+    Ok(count > 0)
 }
 
 const CLAIM_COLS: &str = "id, task_id, actor_id, host, cwd, branch, base_commit, workspace_id, \
@@ -562,6 +584,111 @@ impl Backend for SqliteBackend {
         })
     }
 
+    fn delegate(
+        &self,
+        actor: &Actor,
+        target: &Actor,
+        allowed: &[String],
+        ctx: &Ctx,
+    ) -> Result<Vec<String>> {
+        model::require_human(actor.role(), "delegate")?;
+        if target.is_human() {
+            return Err(FbError::Usage(
+                "the human actor cannot be delegated or undelegated".into(),
+            ));
+        }
+        if allowed.is_empty() {
+            return Err(FbError::Usage(
+                "--allow requires at least one action".into(),
+            ));
+        }
+        for a in allowed {
+            if !model::is_delegatable(a) {
+                return Err(FbError::Usage(format!(
+                    "bad action {a:?} to delegate (must be one of: {})",
+                    model::DELEGATABLE_ACTIONS.join(", ")
+                )));
+            }
+        }
+        self.write(|tx| {
+            for a in allowed {
+                tx.execute(
+                    "INSERT INTO delegations (actor_id, action, created_at) VALUES (?1, ?2, ?3) \
+                     ON CONFLICT (actor_id, action) DO NOTHING",
+                    params![target.id, a, ts(ctx.now)],
+                )?;
+            }
+            event(
+                tx,
+                None,
+                actor,
+                "delegated",
+                json!({ "actor": target.id, "label": target.label, "allowed": allowed }),
+                ctx,
+            )?;
+            tx_get_delegations(tx, target.id)
+        })
+    }
+
+    fn undelegate(
+        &self,
+        actor: &Actor,
+        target: &Actor,
+        revoked: Option<&[String]>,
+        ctx: &Ctx,
+    ) -> Result<Vec<String>> {
+        model::require_human(actor.role(), "undelegate")?;
+        if target.is_human() {
+            return Err(FbError::Usage(
+                "the human actor cannot be delegated or undelegated".into(),
+            ));
+        }
+        if let Some(rev) = revoked {
+            for a in rev {
+                if !model::is_delegatable(a) {
+                    return Err(FbError::Usage(format!(
+                        "bad action {a:?} to undelegate (must be one of: {})",
+                        model::DELEGATABLE_ACTIONS.join(", ")
+                    )));
+                }
+            }
+        }
+        self.write(|tx| {
+            let revoked_list = match revoked {
+                Some(rev) => {
+                    for a in rev {
+                        tx.execute(
+                            "DELETE FROM delegations WHERE actor_id = ?1 AND action = ?2",
+                            params![target.id, a],
+                        )?;
+                    }
+                    rev.to_vec()
+                }
+                None => {
+                    let all = tx_get_delegations(tx, target.id)?;
+                    tx.execute(
+                        "DELETE FROM delegations WHERE actor_id = ?1",
+                        params![target.id],
+                    )?;
+                    all
+                }
+            };
+            event(
+                tx,
+                None,
+                actor,
+                "undelegated",
+                json!({ "actor": target.id, "label": target.label, "revoked": revoked_list }),
+                ctx,
+            )?;
+            tx_get_delegations(tx, target.id)
+        })
+    }
+
+    fn get_delegations(&self, actor_id: i64) -> Result<Vec<String>> {
+        tx_get_delegations(&self.conn, actor_id)
+    }
+
     fn find_project(&self, key_or_alias: &str) -> Result<Option<Project>> {
         project_by(&self.conn, key_or_alias)
     }
@@ -702,10 +829,55 @@ impl Backend for SqliteBackend {
                 })
             })
             .collect::<Result<Vec<_>>>()?;
+        let mut evt_stmt = self.conn.prepare(
+            "SELECT id, task_id, actor_id, type, data, pid, ppid, proc_chain, created_at \
+             FROM events WHERE task_id = ?1 ORDER BY id",
+        )?;
+        let raw_events = evt_stmt
+            .query_map([id], |r| {
+                Ok((
+                    r.get::<_, i64>(0)?,
+                    r.get::<_, Option<i64>>(1)?,
+                    r.get::<_, i64>(2)?,
+                    r.get::<_, String>(3)?,
+                    r.get::<_, Option<String>>(4)?,
+                    r.get::<_, u32>(5)?,
+                    r.get::<_, u32>(6)?,
+                    r.get::<_, String>(7)?,
+                    r.get::<_, String>(8)?,
+                ))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        let history = raw_events
+            .into_iter()
+            .map(|(eid, tid, aid, ty, data_raw, pid, ppid, chain, created)| {
+                let data_val: Option<Value> = data_raw
+                    .as_deref()
+                    .and_then(|d| serde_json::from_str(d).ok());
+                let on_behalf_of = data_val
+                    .as_ref()
+                    .and_then(|v| v.get("on_behalf_of"))
+                    .and_then(|v| v.as_str())
+                    .map(ToString::to_string);
+                Ok(EventRow {
+                    id: eid,
+                    task_id: tid,
+                    actor: load_actor(&self.conn, aid)?,
+                    ty,
+                    data: data_val,
+                    pid,
+                    ppid,
+                    proc_chain: chain,
+                    created_at: parse_ts(&created)?,
+                    on_behalf_of,
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
         Ok(TaskDetail {
             task,
             claims,
             notes,
+            history,
         })
     }
 
@@ -756,7 +928,9 @@ impl Backend for SqliteBackend {
         } else {
             Action::Claim
         };
-        model::authorize(action, actor.role())?;
+        let is_delegated_steal =
+            !actor.is_human() && req.steal && self.has_delegation(actor.id, "steal")?;
+        model::authorize_with_delegation(action, actor.role(), is_delegated_steal)?;
         self.write(|tx| {
             let id = match req.id {
                 Some(id) => id,
@@ -792,14 +966,12 @@ impl Backend for SqliteBackend {
                 };
                 insert_claim(tx, id, new_claimant.id, &host, &cwd, branch, base, ctx)?;
                 bump(tx, id, ctx)?;
-                event(
-                    tx,
-                    Some(id),
-                    actor,
-                    "stolen",
-                    json!({ "from": old.actor.id, "to": new_claimant.id }),
-                    ctx,
-                )?;
+                let is_delegated = !actor.is_human() && tx_has_delegation(tx, actor.id, "steal")?;
+                let mut stolen_data = json!({ "from": old.actor.id, "to": new_claimant.id });
+                if is_delegated {
+                    stolen_data["on_behalf_of"] = json!("human");
+                }
+                event(tx, Some(id), actor, "stolen", stolen_data, ctx)?;
                 return load_task(tx, id);
             }
 
@@ -866,15 +1038,25 @@ impl Backend for SqliteBackend {
             let role = actor.role();
             match cmd {
                 Command::Promote => {
-                    model::authorize(Action::Promote, role)?;
+                    let delegated =
+                        !actor.is_human() && tx_has_delegation(tx, actor.id, "promote")?;
+                    model::authorize_with_delegation(Action::Promote, role, delegated)?;
                     let to = model::transition(task.status, Action::Promote)?;
                     set_status(tx, id, to, ctx)?;
-                    event(tx, Some(id), actor, "promoted", json!({}), ctx)?;
+                    let mut data = json!({});
+                    if delegated {
+                        data["on_behalf_of"] = json!("human");
+                    }
+                    event(tx, Some(id), actor, "promoted", data, ctx)?;
                 }
                 Command::Approve => {
-                    model::authorize(Action::Approve, role)?;
+                    let delegated =
+                        !actor.is_human() && tx_has_delegation(tx, actor.id, "approve")?;
+                    model::authorize_with_delegation(Action::Approve, role, delegated)?;
                     model::transition(task.status, Action::Approve)?;
-                    if !(task.needs_plan_approval && task.plan.is_some()) || task.plan_approved_at.is_some() {
+                    if !(task.needs_plan_approval && task.plan.is_some())
+                        || task.plan_approved_at.is_some()
+                    {
                         return Err(FbError::BadTransition(format!(
                             "{label} has no plan awaiting approval"
                         )));
@@ -883,30 +1065,53 @@ impl Backend for SqliteBackend {
                         "UPDATE tasks SET plan_approved_at = ?1, updated_at = ?1 WHERE id = ?2",
                         params![ts(ctx.now), id],
                     )?;
-                    event(tx, Some(id), actor, "approved", json!({}), ctx)?;
+                    let mut data = json!({});
+                    if delegated {
+                        data["on_behalf_of"] = json!("human");
+                    }
+                    event(tx, Some(id), actor, "approved", data, ctx)?;
                 }
                 Command::Release => {
-                    model::authorize(Action::Release, role)?;
+                    let delegated =
+                        !actor.is_human() && tx_has_delegation(tx, actor.id, "release")?;
+                    model::authorize_with_delegation(Action::Release, role, delegated)?;
                     let to = model::transition(task.status, Action::Release)?;
                     release_claim(tx, id, "released", ctx)?;
                     set_status(tx, id, to, ctx)?;
-                    event(tx, Some(id), actor, "released", json!({}), ctx)?;
+                    let mut data = json!({});
+                    if delegated {
+                        data["on_behalf_of"] = json!("human");
+                    }
+                    event(tx, Some(id), actor, "released", data, ctx)?;
                 }
                 Command::Drop { reason } => {
-                    model::authorize(Action::Drop, role)?;
+                    let delegated = !actor.is_human() && tx_has_delegation(tx, actor.id, "drop")?;
+                    model::authorize_with_delegation(Action::Drop, role, delegated)?;
                     let to = model::transition(task.status, Action::Drop)?;
                     release_claim(tx, id, "dropped", ctx)?;
                     set_status(tx, id, to, ctx)?;
-                    event(tx, Some(id), actor, "dropped", json!({ "reason": reason }), ctx)?;
+                    let mut data = json!({ "reason": reason });
+                    if delegated {
+                        data["on_behalf_of"] = json!("human");
+                    }
+                    event(tx, Some(id), actor, "dropped", data, ctx)?;
                 }
                 Command::Reopen => {
-                    model::authorize(Action::Reopen, role)?;
+                    let delegated =
+                        !actor.is_human() && tx_has_delegation(tx, actor.id, "reopen")?;
+                    model::authorize_with_delegation(Action::Reopen, role, delegated)?;
                     let to = model::transition(task.status, Action::Reopen)?;
                     set_status(tx, id, to, ctx)?;
-                    event(tx, Some(id), actor, "reopened", json!({}), ctx)?;
+                    let mut data = json!({});
+                    if delegated {
+                        data["on_behalf_of"] = json!("human");
+                    }
+                    event(tx, Some(id), actor, "reopened", data, ctx)?;
                 }
                 Command::Verify { force, commits } => {
-                    model::authorize(Action::Verify, role)?;
+                    let delegated =
+                        !actor.is_human() && tx_has_delegation(tx, actor.id, "verify")?;
+                    model::authorize_with_delegation(Action::Verify, role, delegated)?;
                     let to = model::transition(task.status, Action::Verify)?;
                     if task.kind == Kind::Code && !force && !commits.is_some_and(|c| c > 0) {
                         return Err(FbError::BadTransition(format!(
@@ -915,15 +1120,25 @@ impl Backend for SqliteBackend {
                     }
                     release_claim(tx, id, "done", ctx)?;
                     set_status(tx, id, to, ctx)?;
-                    event(tx, Some(id), actor, "verified", json!({ "force": force, "commits": commits }), ctx)?;
+                    let mut data = json!({ "force": force, "commits": commits });
+                    if delegated {
+                        data["on_behalf_of"] = json!("human");
+                    }
+                    event(tx, Some(id), actor, "verified", data, ctx)?;
                 }
                 Command::Reject { comment } => {
-                    model::authorize(Action::Reject, role)?;
+                    let delegated =
+                        !actor.is_human() && tx_has_delegation(tx, actor.id, "reject")?;
+                    model::authorize_with_delegation(Action::Reject, role, delegated)?;
                     non_empty(comment, "reject comment")?;
                     let to = model::transition(task.status, Action::Reject)?;
                     insert_note(tx, id, actor, "comment", comment, ctx)?;
                     set_status(tx, id, to, ctx)?;
-                    event(tx, Some(id), actor, "rejected", json!({ "comment": comment }), ctx)?;
+                    let mut data = json!({ "comment": comment });
+                    if delegated {
+                        data["on_behalf_of"] = json!("human");
+                    }
+                    event(tx, Some(id), actor, "rejected", data, ctx)?;
                 }
                 Command::Plan { text } => {
                     non_empty(text, "plan")?;
@@ -1656,5 +1871,68 @@ mod tests {
             db.add_task(&h, &nt, &ctx()).unwrap_err().code(),
             "NOT_FOUND"
         );
+    }
+
+    #[test]
+    fn delegation_store_operations() {
+        let db = SqliteBackend::open_in_memory().unwrap();
+        let h = human(&db);
+        let a = agent(&db, "agent-1");
+
+        // Human cannot be delegated
+        assert_eq!(
+            db.delegate(&h, &h, &["promote".into()], &ctx())
+                .unwrap_err()
+                .code(),
+            "USAGE"
+        );
+
+        // Agent cannot delegate
+        assert_eq!(
+            db.delegate(&a, &a, &["promote".into()], &ctx())
+                .unwrap_err()
+                .code(),
+            "HUMAN_ONLY"
+        );
+
+        // Invalid action
+        assert_eq!(
+            db.delegate(&h, &a, &["bogus".into()], &ctx())
+                .unwrap_err()
+                .code(),
+            "USAGE"
+        );
+
+        // Empty allow list
+        assert_eq!(
+            db.delegate(&h, &a, &[], &ctx()).unwrap_err().code(),
+            "USAGE"
+        );
+
+        // Delegate promote and verify
+        let d = db
+            .delegate(&h, &a, &["promote".into(), "verify".into()], &ctx())
+            .unwrap();
+        assert_eq!(d, vec!["promote".to_string(), "verify".to_string()]);
+        assert_eq!(
+            db.get_delegations(a.id).unwrap(),
+            vec!["promote".to_string(), "verify".to_string()]
+        );
+        assert!(db.has_delegation(a.id, "promote").unwrap());
+        assert!(db.has_delegation(a.id, "verify").unwrap());
+        assert!(!db.has_delegation(a.id, "approve").unwrap());
+
+        // Partial undelegate
+        let rem = db
+            .undelegate(&h, &a, Some(&["promote".into()]), &ctx())
+            .unwrap();
+        assert_eq!(rem, vec!["verify".to_string()]);
+        assert!(!db.has_delegation(a.id, "promote").unwrap());
+        assert!(db.has_delegation(a.id, "verify").unwrap());
+
+        // Full undelegate
+        let rem2 = db.undelegate(&h, &a, None, &ctx()).unwrap();
+        assert!(rem2.is_empty());
+        assert_eq!(db.get_delegations(a.id).unwrap().len(), 0);
     }
 }

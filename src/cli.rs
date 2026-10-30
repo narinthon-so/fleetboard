@@ -158,6 +158,20 @@ enum Cmd {
     },
     /// (human) reopen a done or dropped task
     Reopen { id: String },
+    /// (human) grant rights to act on human behalf
+    Delegate {
+        actor: String,
+        /// any of promote, approve, verify, reject, release, steal, drop, reopen
+        #[arg(long, value_delimiter = ',', num_args = 1..)]
+        allow: Vec<String>,
+    },
+    /// (human) revoke rights to act on human behalf
+    Undelegate {
+        actor: String,
+        /// specific rights to revoke; if omitted, revokes all
+        #[arg(long, value_delimiter = ',', num_args = 1..)]
+        allow: Option<Vec<String>>,
+    },
     /// (human) grant the tracker role
     Trust { actor: String },
     /// (human) remove the tracker role
@@ -618,6 +632,56 @@ fn dispatch(s: &Session) -> Result<Out> {
             "dropped",
         ),
         Cmd::Reopen { id } => simple(s, id, &Command::Reopen, "reopened: back to todo"),
+        Cmd::Delegate { actor, allow } => {
+            model::require_human(s.actor.role(), "delegate")?;
+            let target = s.db.find_actor(actor)?;
+            let allowed_actions: Vec<String> = allow
+                .iter()
+                .flat_map(|s| s.split(','))
+                .map(|s| s.trim().to_lowercase())
+                .filter(|s| !s.is_empty())
+                .collect();
+            let current = s.db.delegate(&s.actor, &target, &allowed_actions, &s.ctx)?;
+            Ok(Out {
+                text: format!(
+                    "{} is now delegated: {}\n",
+                    target.label,
+                    current.join(", ")
+                ),
+                data: json!({
+                    "actor": target,
+                    "delegated": current,
+                }),
+            })
+        }
+        Cmd::Undelegate { actor, allow } => {
+            model::require_human(s.actor.role(), "undelegate")?;
+            let target = s.db.find_actor(actor)?;
+            let revoked_actions: Option<Vec<String>> = allow.as_ref().map(|list| {
+                list.iter()
+                    .flat_map(|s| s.split(','))
+                    .map(|s| s.trim().to_lowercase())
+                    .filter(|s| !s.is_empty())
+                    .collect()
+            });
+            let remaining =
+                s.db.undelegate(&s.actor, &target, revoked_actions.as_deref(), &s.ctx)?;
+            let text = match &revoked_actions {
+                Some(rev) => format!(
+                    "{} revoked delegated rights: {}\n",
+                    target.label,
+                    rev.join(", ")
+                ),
+                None => format!("{} revoked all delegated rights\n", target.label),
+            };
+            Ok(Out {
+                text,
+                data: json!({
+                    "actor": target,
+                    "delegated": remaining,
+                }),
+            })
+        }
         Cmd::Trust { actor } | Cmd::Untrust { actor } => {
             let trusted = matches!(s.cli.cmd, Cmd::Trust { .. });
             let target = s.db.find_actor(actor)?;
@@ -1043,6 +1107,16 @@ fn show_out(s: &Session, d: TaskDetail, evidence: bool) -> Result<Out> {
             text.push_str(&format!("  {l}\n"));
         }
     }
+    if !d.history.is_empty() {
+        text.push_str("history:\n");
+        for e in &d.history {
+            let who = match &e.on_behalf_of {
+                Some(obo) => format!("{} on behalf of {obo}", e.actor.label),
+                None => e.actor.label.clone(),
+            };
+            text.push_str(&format!("  {} by {} at {}\n", e.ty, who, ts(e.created_at)));
+        }
+    }
     if let Some(e) = &ev {
         let v = &e.ev;
         text.push_str(&format!(
@@ -1150,16 +1224,32 @@ fn whoami_out(s: &Session) -> Result<Out> {
         None => "(none)".to_string(),
     };
 
+    let delegated = s.db.get_delegations(s.actor.id)?;
+    let delegated_str = if delegated.is_empty() {
+        "(none)".to_string()
+    } else {
+        delegated.join(", ")
+    };
+
     let text = format!(
         "kind:        {}\n\
          provider:    {}\n\
          external_id: {}\n\
          label:       {}\n\
          trusted:     {}\n\
+         delegated:   {}\n\
          host:        {}\n\
          project:     {}\n\
          instance:    {}\n",
-        s.actor.kind, prov, s.actor.external_id, s.actor.label, s.actor.trusted, s.host, proj, inst
+        s.actor.kind,
+        prov,
+        s.actor.external_id,
+        s.actor.label,
+        s.actor.trusted,
+        delegated_str,
+        s.host,
+        proj,
+        inst
     );
 
     let data = json!({
@@ -1169,6 +1259,7 @@ fn whoami_out(s: &Session) -> Result<Out> {
             "external_id": s.actor.external_id,
             "label": s.actor.label,
             "trusted": s.actor.trusted,
+            "delegated": delegated,
         },
         "host": s.host,
         "project": project,

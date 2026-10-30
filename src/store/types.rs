@@ -132,12 +132,28 @@ pub struct NoteRow {
 }
 
 #[derive(Debug, Clone)]
+pub struct EventRow {
+    pub id: i64,
+    pub task_id: Option<i64>,
+    pub actor: Actor,
+    pub ty: String,
+    pub data: Option<serde_json::Value>,
+    pub pid: u32,
+    pub ppid: u32,
+    pub proc_chain: String,
+    pub created_at: DateTime<Utc>,
+    pub on_behalf_of: Option<String>,
+}
+
+#[derive(Debug, Clone)]
 pub struct TaskDetail {
     pub task: TaskRow,
     /// Every claim, newest first.
     pub claims: Vec<ClaimRow>,
     /// Oldest first.
     pub notes: Vec<NoteRow>,
+    /// Oldest first.
+    pub history: Vec<EventRow>,
 }
 
 #[derive(Debug, Clone)]

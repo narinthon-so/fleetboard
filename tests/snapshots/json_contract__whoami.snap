@@ -5,6 +5,7 @@ expression: "snap(&e, &r)"
 {
   "data": {
     "caller": {
+      "delegated": [],
       "external_id": "agent-aaaaaaa",
       "kind": "agent",
       "label": "<label>",
