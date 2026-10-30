@@ -63,6 +63,8 @@ pub fn render(p: &PrimeInput) -> String {
             "Your claim: {} \"{}\" ({}{plan})\n",
             c.id, c.title, c.status
         ));
+        let num = c.id.strip_prefix("fb-").unwrap_or(&c.id);
+        out.push_str(&format!("Branch: task/fb-{num}\n"));
         if let Some(h) = &c.handoff {
             out.push_str(&format!("Last handoff ({}, {}):\n", h.author, ago(h.age)));
             for line in h.body.lines() {
@@ -113,6 +115,7 @@ mod tests {
             text,
             "fleetboard — you are codex 403254b on host RPI, project github.com/org/repo\n\
              Your claim: fb-12 \"Rate-limit public endpoints\" (in_progress, plan approved)\n\
+             Branch: task/fb-12\n\
              Last handoff (claude 6df8aed, 2h ago):\n  line one\n  line two\n\
              Workflow: fb show fb-12 · fb note fb-12 \"…\" (handoff before you stop) · fb done fb-12\n\
              No claim? fb ready, then fb claim <id>. New work you find: fb add \"…\" (lands as a draft).\n"
@@ -127,6 +130,28 @@ mod tests {
         assert!(text.contains("project (none: not in a git repo)"));
         assert!(text.contains("You have no active claim."));
         assert!(!text.contains("Your claim"));
+        assert!(!text.contains("Branch:"));
+    }
+
+    #[test]
+    fn suggested_branch_formats() {
+        let text = render(&input(vec![PrimeClaim {
+            id: "12".into(),
+            title: "Test".into(),
+            status: "in_progress".into(),
+            plan: PlanState::NotRequired,
+            handoff: None,
+        }]));
+        assert!(text.contains("Branch: task/fb-12\n"));
+
+        let text2 = render(&input(vec![PrimeClaim {
+            id: "fb-3".into(),
+            title: "Test".into(),
+            status: "in_progress".into(),
+            plan: PlanState::NotRequired,
+            handoff: None,
+        }]));
+        assert!(text2.contains("Branch: task/fb-3\n"));
     }
 
     #[test]

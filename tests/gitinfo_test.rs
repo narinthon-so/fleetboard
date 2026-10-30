@@ -1,6 +1,7 @@
 use chrono::{Duration, Utc};
 use fleetboard::gitinfo::{
-    Evidence, Instance, PrInfo, evidence, instance, last_commit_time, normalize_remote, project_key,
+    Evidence, Instance, PrInfo, compact_diffstat, evidence, instance, last_commit_time,
+    normalize_remote, project_key,
 };
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -304,4 +305,55 @@ fn test_evidence_serde() {
     };
     let inst_json = serde_json::to_string(&inst).expect("serialize instance");
     assert!(inst_json.contains("\"host\":\"testhost\""));
+}
+
+#[test]
+fn test_compact_diffstat() {
+    assert_eq!(
+        compact_diffstat(" 4 files changed, 133 insertions(+)"),
+        "4 files changed, +133"
+    );
+    assert_eq!(
+        compact_diffstat(" 4 files changed, 133 insertions(+), 12 deletions(-)"),
+        "4 files changed, +133, -12"
+    );
+    assert_eq!(
+        compact_diffstat(" 1 file changed, 1 insertion(+)"),
+        "1 file changed, +1"
+    );
+    assert_eq!(
+        compact_diffstat(" 1 file changed, 2 deletions(-)"),
+        "1 file changed, -2"
+    );
+    assert_eq!(compact_diffstat(" 1 file changed"), "1 file changed");
+    assert_eq!(compact_diffstat(""), "");
+}
+
+#[test]
+fn test_evidence_summary() {
+    let ev = Evidence {
+        commits: 1,
+        rebased: false,
+        diffstat: Some("4 files changed, 133 insertions(+)".to_string()),
+        dirty: false,
+        pr: None,
+        reachable: true,
+    };
+    assert_eq!(
+        ev.summary(),
+        "evidence: 1 commit, 4 files changed, +133, clean"
+    );
+
+    let ev_dirty = Evidence {
+        commits: 2,
+        rebased: true,
+        diffstat: Some("1 file changed, 2 deletions(-)".to_string()),
+        dirty: true,
+        pr: None,
+        reachable: true,
+    };
+    assert_eq!(
+        ev_dirty.summary(),
+        "evidence: 2 commits, rebased, 1 file changed, -2, dirty"
+    );
 }

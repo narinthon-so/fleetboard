@@ -528,6 +528,7 @@ fn prime_shows_the_claim_and_the_previous_agents_handoff() {
         "{}",
         r.stdout
     );
+    assert!(r.stdout.contains("Branch: task/fb-1"), "{}", r.stdout);
     assert!(r.stdout.contains("Last handoff (codex"), "{}", r.stdout);
     assert!(
         r.stdout
@@ -756,4 +757,30 @@ fn whoami_prints_human_block_and_envelope_and_works_outside_git() {
     let r_human_text = e.text(H, &["whoami"]);
     assert!(r_human_text.stdout.contains("kind:        human"));
     assert!(r_human_text.stdout.contains("provider:    (none)"));
+}
+
+#[test]
+fn done_text_shows_evidence_line_and_warning_when_no_commits() {
+    let e = Env::new();
+    e.ok(H, &["add", "Task with code"]);
+    e.ok(A, &["claim", "fb-1"]);
+    e.git(&["checkout", "-q", "-b", "task/fb-1"]);
+    e.write("foo.txt", "bar\n");
+    e.commit("foo commit");
+
+    let r = e.text(A, &["done", "fb-1"]);
+    assert_eq!(r.code, 0);
+    assert_eq!(
+        r.stdout,
+        "fb-1 is now in review\nevidence: 1 commit, 1 file changed, +1, clean\n"
+    );
+
+    e.ok(H, &["add", "Task without code"]);
+    e.ok(A, &["claim", "fb-2"]);
+    let r2 = e.text(A, &["done", "fb-2"]);
+    assert_eq!(r2.code, 0);
+    assert_eq!(
+        r2.stdout,
+        "fb-2 is now in review\nwarning: claimed, no commits. Explain why in a handoff note.\n"
+    );
 }
