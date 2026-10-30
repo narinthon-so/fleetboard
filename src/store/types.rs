@@ -2,6 +2,7 @@
 
 use chrono::{DateTime, Utc};
 use serde::Serialize;
+use serde_json::Value;
 
 use super::error::{FbError, Result};
 use crate::model::{Kind, Role, Status};
@@ -129,6 +130,29 @@ pub struct NoteRow {
     pub kind: String,
     pub body: String,
     pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone)]
+pub struct EventRow {
+    pub id: i64,
+    pub task_id: Option<i64>,
+    pub actor: Actor,
+    pub event_type: String,
+    pub data: Option<Value>,
+    pub pid: u32,
+    pub ppid: u32,
+    pub proc_chain: Option<String>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct InstanceRow {
+    pub host: String,
+    pub cwd: String,
+    pub branch: Option<String>,
+    pub workspace_id: Option<String>,
+    pub actor: Actor,
+    pub project: Option<Project>,
 }
 
 #[derive(Debug, Clone)]

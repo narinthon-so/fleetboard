@@ -2,8 +2,8 @@
 
 use std::path::Path;
 
+use crate::store::{FbError, Result};
 use chrono::Duration;
-use fleetboard::store::{FbError, Result};
 use serde::Deserialize;
 
 #[derive(Debug, Clone)]
