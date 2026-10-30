@@ -208,6 +208,15 @@ async function main() {
   await page.waitForSelector(`[data-card-id="${t3Id}"]`);
   await page.waitForTimeout(1000);
 
+  // Check column layout bounds
+  const columnRects = await page.evaluate(() => {
+    return Array.from(document.querySelectorAll('[data-column-id]')).map((el) => {
+      const r = el.getBoundingClientRect();
+      return { id: el.getAttribute('data-column-id'), left: Math.round(r.left), right: Math.round(r.right), width: Math.round(r.width) };
+    });
+  });
+  console.log('Columns layout bounds at 1440px:', columnRects);
+
   const boardPath = path.join(screenshotsDir, 'board.png');
   await page.screenshot({ path: boardPath });
   console.log(`Saved board screenshot to: ${boardPath}`);

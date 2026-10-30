@@ -11,7 +11,7 @@ export function KanbanBoard({ children, className }: KanbanBoardProps) {
     <div
       role="region"
       aria-label="Kanban board"
-      className={cn('flex flex-row gap-3 overflow-x-auto pb-4 h-full min-h-0', className)}
+      className={cn('flex flex-row gap-2.5 overflow-x-auto pb-2 h-full min-h-0 w-full', className)}
     >
       {children}
     </div>
@@ -44,8 +44,9 @@ export function KanbanColumn({
       <div
         data-column-id={id}
         onClick={onToggleCollapse}
+        title={`Click to expand ${title} column`}
         className={cn(
-          'w-12 shrink-0 flex flex-col items-center py-3 px-1 rounded-md border border-[var(--border)] bg-[var(--card)]/40 hover:bg-[var(--card)] cursor-pointer transition-colors',
+          'w-12 shrink-0 flex flex-col items-center py-3 px-1 rounded-md border border-[var(--border)] bg-[var(--card)]/40 hover:bg-[var(--card)] cursor-pointer transition-colors select-none',
           className
         )}
       >
@@ -64,7 +65,7 @@ export function KanbanColumn({
     <div
       data-column-id={id}
       className={cn(
-        'w-80 shrink-0 flex flex-col rounded-md border border-[var(--border)] bg-[var(--card)]/30 min-h-0 h-full',
+        'flex-1 min-w-[200px] flex flex-col rounded-md border border-[var(--border)] bg-[var(--card)]/30 min-h-0 h-full',
         className
       )}
     >
@@ -84,7 +85,7 @@ export function KanbanColumn({
             type="button"
             onClick={onToggleCollapse}
             aria-label={`Collapse ${title} column`}
-            className="text-[var(--muted-foreground)] hover:text-[var(--foreground)] text-xs px-1"
+            className="text-[var(--muted-foreground)] hover:text-[var(--foreground)] text-xs px-1 cursor-pointer"
           >
             ◂
           </button>

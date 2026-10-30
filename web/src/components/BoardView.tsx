@@ -98,13 +98,13 @@ export function BoardView({
 
   // Loading skeleton state
   if (isLoading) {
-    const columns = ['Draft', 'Ready', 'Blocked', 'In progress', 'Review', 'Done'];
+    const columns = ['Draft', 'Ready', 'Blocked', 'In progress', 'Review'];
     return (
-      <KanbanBoard className="p-4 flex-1">
+      <KanbanBoard className="p-3 flex-1 w-full max-w-full">
         {columns.map((colName) => (
           <div
             key={colName}
-            className="w-80 shrink-0 flex flex-col rounded-md border border-[var(--border)] bg-[var(--card)]/30 min-h-0 h-full animate-pulse"
+            className="flex-1 min-w-[200px] flex flex-col rounded-md border border-[var(--border)] bg-[var(--card)]/30 min-h-0 h-full animate-pulse"
           >
             <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--border)] bg-[var(--card)]/80">
               <span className="font-semibold text-xs text-[var(--muted-foreground)]">{colName}</span>
@@ -117,6 +117,11 @@ export function BoardView({
             </div>
           </div>
         ))}
+        {/* Collapsed Done column skeleton */}
+        <div className="w-12 shrink-0 flex flex-col items-center py-3 px-1 rounded-md border border-[var(--border)] bg-[var(--card)]/40 animate-pulse">
+          <div className="w-4 h-4 rounded-full bg-[var(--muted)] mb-2" />
+          <div className="w-2 h-12 bg-[var(--muted)] rounded" />
+        </div>
       </KanbanBoard>
     );
   }
@@ -155,7 +160,7 @@ export function BoardView({
   }
 
   return (
-    <KanbanBoard className="p-4 flex-1">
+    <KanbanBoard className="p-3 flex-1 w-full max-w-full">
       {/* Draft Column */}
       <KanbanColumn
         id="draft"
@@ -241,7 +246,7 @@ export function BoardView({
         ))}
       </KanbanColumn>
 
-      {/* Done Column (collapsed by default) */}
+      {/* Done Column (collapsed to narrow by default, expandable on click) */}
       <KanbanColumn
         id="done"
         title="Done"

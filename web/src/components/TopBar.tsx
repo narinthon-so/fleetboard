@@ -1,5 +1,6 @@
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useMemo } from 'react';
 import type { BoardData } from '../types/api';
+import { Combobox, InstanceCombobox, type InstanceGroup } from './ui/combobox';
 import { Search, Moon, Sun } from 'lucide-react';
 
 export type SSEStatus = 'connected' | 'reconnecting' | 'disconnected' | 'daemon_down';
@@ -48,110 +49,202 @@ export function TopBar({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // Compute unique filter options
-  const projectOptions = boardData
-    ? Array.from(new Set(boardData.tasks.map((t) => t.project?.key).filter(Boolean)))
-    : [];
+  // Compute Project options
+  const projectOptions = useMemo(() => {
+    if (!boardData) return [];
+    const map = new Map<string, { label: string; secondary?: string }>();
+    for (const p of boardData.projects) {
+      map.set(p.key, {
+        label: p.alias || p.name || p.key.split('/').pop() || p.key,
+        secondary: p.key,
+      });
+    }
+    for (const t of boardData.tasks) {
+      if (t.project && !map.has(t.project.key)) {
+        map.set(t.project.key, {
+          label: t.project.alias || t.project.name || t.project.key.split('/').pop() || t.project.key,
+          secondary: t.project.key,
+        });
+      }
+    }
+    return Array.from(map.entries()).map(([key, data]) => ({
+      value: key,
+      label: data.label,
+      secondary: data.secondary,
+    }));
+  }, [boardData]);
 
-  const hostOptions = boardData
-    ? Array.from(
-        new Set(
-          [
-            ...boardData.instances.map((i) => i.host),
-            ...boardData.tasks.map((t) => t.claim?.host).filter(Boolean),
-          ].filter(Boolean)
-        )
-      )
-    : [];
+  // Compute Host options
+  const hostOptions = useMemo(() => {
+    if (!boardData) return [];
+    const set = new Set<string>();
+    for (const inst of boardData.instances) {
+      if (inst.host) set.add(inst.host);
+    }
+    for (const t of boardData.tasks) {
+      if (t.claim?.host) set.add(t.claim.host);
+    }
+    return Array.from(set).map((h) => ({ value: h, label: h }));
+  }, [boardData]);
 
-  const agentOptions = boardData
-    ? Array.from(
-        new Set(
-          boardData.tasks
-            .map((t) => t.claim?.actor?.external_id || t.claim?.actor?.label)
-            .filter(Boolean)
-        )
-      )
-    : [];
+  // Compute Agent options
+  const agentOptions = useMemo(() => {
+    if (!boardData) return [];
+    const map = new Map<string, { label: string; secondary?: string }>();
+    for (const act of boardData.actors) {
+      const val = act.external_id || act.label;
+      map.set(val, {
+        label: act.label,
+        secondary: act.provider || undefined,
+      });
+    }
+    for (const t of boardData.tasks) {
+      if (t.claim?.actor) {
+        const val = t.claim.actor.external_id || t.claim.actor.label;
+        if (!map.has(val)) {
+          map.set(val, {
+            label: t.claim.actor.label,
+            secondary: t.claim.actor.provider || undefined,
+          });
+        }
+      }
+    }
+    return Array.from(map.entries()).map(([val, data]) => ({
+      value: val,
+      label: data.label,
+      secondary: data.secondary,
+    }));
+  }, [boardData]);
 
-  const instanceOptions = boardData ? boardData.instances : [];
+  // Compute Two-Level Instance groups (project -> instances)
+  const instanceGroups: InstanceGroup[] = useMemo(() => {
+    if (!boardData) return [];
+
+    const projectMap = new Map<
+      string,
+      {
+        projectName: string;
+        instancesMap: Map<
+          string,
+          {
+            cwd: string;
+            host: string;
+            pathTail: string;
+            branch: string;
+            agent: string;
+            projectKey: string;
+            projectName: string;
+          }
+        >;
+      }
+    >();
+
+    function addInstance(
+      projKey: string,
+      projName: string,
+      cwd: string,
+      host: string,
+      branch: string | null,
+      agentLabel: string
+    ) {
+      if (!projectMap.has(projKey)) {
+        projectMap.set(projKey, {
+          projectName: projName,
+          instancesMap: new Map(),
+        });
+      }
+      const entry = projectMap.get(projKey)!;
+      if (!entry.instancesMap.has(cwd)) {
+        const pathTail = cwd.split('/').filter(Boolean).pop() || cwd;
+        entry.instancesMap.set(cwd, {
+          cwd,
+          host,
+          pathTail,
+          branch: branch || 'main',
+          agent: agentLabel,
+          projectKey: projKey,
+          projectName: projName,
+        });
+      }
+    }
+
+    for (const inst of boardData.instances) {
+      const projKey = inst.project?.key || 'unknown';
+      const projName = inst.project?.alias || inst.project?.name || projKey.split('/').pop() || projKey;
+      addInstance(projKey, projName, inst.cwd, inst.host, inst.branch, inst.actor?.label || 'anon');
+    }
+
+    for (const t of boardData.tasks) {
+      if (t.claim && t.project) {
+        const projKey = t.project.key;
+        const projName = t.project.alias || t.project.name || projKey.split('/').pop() || projKey;
+        addInstance(
+          projKey,
+          projName,
+          t.claim.cwd,
+          t.claim.host,
+          t.claim.branch,
+          t.claim.actor?.label || 'anon'
+        );
+      }
+    }
+
+    return Array.from(projectMap.entries()).map(([key, data]) => ({
+      projectKey: key,
+      projectName: data.projectName,
+      instances: Array.from(data.instancesMap.values()),
+    }));
+  }, [boardData]);
 
   return (
-    <header className="flex items-center justify-between px-4 py-2 border-b border-[var(--border)] bg-[var(--card)]/90 backdrop-blur sticky top-0 z-30 select-none text-xs gap-3">
+    <header className="flex items-center justify-between px-4 py-2 border-b border-[var(--border)] bg-[var(--card)]/90 backdrop-blur sticky top-0 z-30 select-none text-xs gap-3 flex-nowrap whitespace-nowrap overflow-x-auto min-h-[44px]">
       {/* Brand */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 shrink-0">
         <span className="font-semibold text-sm tracking-tight text-[var(--foreground)] font-mono">
           fleetboard
         </span>
       </div>
 
-      {/* Filters */}
-      <div className="flex items-center gap-2 flex-wrap flex-1 max-w-4xl">
-        {/* Project Selector */}
-        <select
-          aria-label="Filter by project"
+      {/* Filter controls — Strictly ONE Row */}
+      <div className="flex items-center gap-2 flex-nowrap shrink-0">
+        {/* Project Combobox */}
+        <Combobox
+          label="Project"
           value={filters.project}
-          onChange={(e) => onFilterChange({ ...filters, project: e.target.value })}
-          className="bg-[var(--card)] border border-[var(--border)] text-[var(--foreground)] rounded px-2 py-1 text-xs focus:ring-1 focus:ring-[var(--ring)] focus:outline-none cursor-pointer"
-        >
-          <option value="">Project: all</option>
-          {projectOptions.map((p) => (
-            <option key={p} value={p}>
-              {p}
-            </option>
-          ))}
-        </select>
+          options={projectOptions}
+          placeholder="all"
+          onChange={(val) => onFilterChange({ ...filters, project: val })}
+        />
 
-        {/* Instance Selector */}
-        <select
-          aria-label="Filter by instance"
+        {/* Instance Combobox: Two-level list project -> instances */}
+        <InstanceCombobox
           value={filters.instance}
-          onChange={(e) => onFilterChange({ ...filters, instance: e.target.value })}
-          className="bg-[var(--card)] border border-[var(--border)] text-[var(--foreground)] rounded px-2 py-1 text-xs focus:ring-1 focus:ring-[var(--ring)] focus:outline-none cursor-pointer"
-        >
-          <option value="">Instance: all</option>
-          {instanceOptions.map((inst, idx) => {
-            const label = `${inst.host} · ${inst.cwd.split('/').pop()} · ${inst.branch || 'main'} · ${inst.actor?.label || 'anon'}`;
-            return (
-              <option key={idx} value={inst.cwd}>
-                {label}
-              </option>
-            );
-          })}
-        </select>
+          selectedProject={filters.project}
+          groups={instanceGroups}
+          onSelectInstance={(instCwd) => onFilterChange({ ...filters, instance: instCwd })}
+          onSelectProject={(projKey) => onFilterChange({ ...filters, project: projKey, instance: '' })}
+        />
 
-        {/* Agent Selector */}
-        <select
-          aria-label="Filter by agent"
+        {/* Agent Combobox */}
+        <Combobox
+          label="Agent"
           value={filters.agent}
-          onChange={(e) => onFilterChange({ ...filters, agent: e.target.value })}
-          className="bg-[var(--card)] border border-[var(--border)] text-[var(--foreground)] rounded px-2 py-1 text-xs focus:ring-1 focus:ring-[var(--ring)] focus:outline-none cursor-pointer"
-        >
-          <option value="">Agent: all</option>
-          {agentOptions.map((a) => (
-            <option key={a} value={a}>
-              {a}
-            </option>
-          ))}
-        </select>
+          options={agentOptions}
+          placeholder="all"
+          onChange={(val) => onFilterChange({ ...filters, agent: val })}
+        />
 
-        {/* Host Selector */}
-        <select
-          aria-label="Filter by host"
+        {/* Host Combobox */}
+        <Combobox
+          label="Host"
           value={filters.host}
-          onChange={(e) => onFilterChange({ ...filters, host: e.target.value })}
-          className="bg-[var(--card)] border border-[var(--border)] text-[var(--foreground)] rounded px-2 py-1 text-xs focus:ring-1 focus:ring-[var(--ring)] focus:outline-none cursor-pointer"
-        >
-          <option value="">Host: all</option>
-          {hostOptions.map((h) => (
-            <option key={h} value={h}>
-              {h}
-            </option>
-          ))}
-        </select>
+          options={hostOptions}
+          placeholder="all"
+          onChange={(val) => onFilterChange({ ...filters, host: val })}
+        />
 
         {/* Search Input */}
-        <div className="relative flex items-center min-w-[160px] max-w-[220px]">
+        <div className="relative flex items-center w-36 shrink-0">
           <Search className="w-3.5 h-3.5 absolute left-2 text-[var(--muted-foreground)] pointer-events-none" />
           <input
             ref={searchInputRef}
@@ -164,7 +257,7 @@ export function TopBar({
         </div>
 
         {/* Dropped toggle */}
-        <label className="flex items-center gap-1.5 cursor-pointer text-xs text-[var(--muted-foreground)] select-none">
+        <label className="flex items-center gap-1.5 cursor-pointer text-xs text-[var(--muted-foreground)] select-none shrink-0 pl-1">
           <input
             type="checkbox"
             checked={filters.showDropped}
@@ -176,7 +269,7 @@ export function TopBar({
       </div>
 
       {/* Right side: SSE dot & Theme toggle */}
-      <div className="flex items-center gap-3 shrink-0">
+      <div className="flex items-center gap-3 shrink-0 ml-auto">
         {/* SSE Indicator */}
         <div
           title={
@@ -186,7 +279,7 @@ export function TopBar({
               ? 'Reconnecting to fleetboard daemon...'
               : 'Disconnected from fleetboard daemon'
           }
-          className="flex items-center gap-1 font-mono text-xs select-none"
+          className="flex items-center gap-1 font-mono text-xs select-none shrink-0"
         >
           {sseStatus === 'connected' && (
             <span className="flex items-center gap-1 text-[var(--status-done)]">
@@ -213,7 +306,7 @@ export function TopBar({
           type="button"
           onClick={onToggleTheme}
           aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-          className="p-1 rounded hover:bg-[var(--accent)] text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors cursor-pointer"
+          className="p-1 rounded hover:bg-[var(--accent)] text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors cursor-pointer shrink-0"
         >
           {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
         </button>
