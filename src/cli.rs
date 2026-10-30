@@ -4,19 +4,19 @@ use std::ffi::OsString;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
-use chrono::{DateTime, Utc};
-use clap::{Parser, Subcommand};
-use fleetboard::gitinfo::{self, Evidence};
-use fleetboard::identity::{self, ProcInfo};
-use fleetboard::model::{self, Derived, Facts, Kind, Status};
-use fleetboard::prime::{self, Handoff, PlanState, PrimeClaim, PrimeInput};
-use fleetboard::store::{
+use crate::gitinfo::{self, Evidence};
+use crate::identity::{self, ProcInfo};
+use crate::model::{self, Derived, Facts, Kind, Status};
+use crate::prime::{self, Handoff, PlanState, PrimeClaim, PrimeInput};
+use crate::store::{
     Actor, Backend, ClaimRequest, ClaimRow, Command, Ctx, FbError, Location, NewTask, ProjectSel,
     Result, SqliteBackend, TaskDetail, TaskFilter, TaskRow, TicketSpec, fmt_id, parse_id,
 };
+use chrono::{DateTime, Utc};
+use clap::{Parser, Subcommand};
 use serde_json::{Value, json};
 
-use fleetboard::config::{self, Config};
+use crate::config::{self, Config};
 
 #[derive(Parser)]
 #[command(
@@ -24,22 +24,22 @@ use fleetboard::config::{self, Config};
     version,
     about = "Task board for one person running many coding agents"
 )]
-struct Cli {
+pub struct Cli {
     /// Print one JSON value on stdout and nothing else
     #[arg(long, global = true)]
-    json: bool,
+    pub json: bool,
     /// Act as the human (refused when agent markers are present)
     #[arg(long = "as-human", global = true)]
-    as_human: bool,
+    pub as_human: bool,
     /// Data directory (default: $FB_HOME, else ~/.fleetboard)
     #[arg(long, global = true, value_name = "DIR")]
-    home: Option<PathBuf>,
+    pub home: Option<PathBuf>,
     #[command(subcommand)]
-    cmd: Cmd,
+    pub cmd: Cmd,
 }
 
 #[derive(Subcommand)]
-enum Cmd {
+pub enum Cmd {
     /// Create a task (agents: draft; human or trusted: todo)
     Add {
         title: String,
@@ -182,11 +182,14 @@ enum Cmd {
         cmd: ProjectCmd,
     },
     /// Start the loopback HTTP server and web UI
+    /// Start the loopback HTTP server and web UI
     Serve {
         /// Port to listen on (default: 7878)
         #[arg(long, default_value_t = 7878)]
         port: u16,
     },
+    /// Start the stdio Model Context Protocol (MCP) server
+    Mcp,
     /// Record agent lifecycle hook event (session-start | stop | tool-use | prompt)
     Hook {
         /// session-start | stop | tool-use | prompt
@@ -195,7 +198,7 @@ enum Cmd {
 }
 
 #[derive(Subcommand)]
-enum DepCmd {
+pub enum DepCmd {
     /// task depends on blocker
     Add {
         task: String,
@@ -208,15 +211,15 @@ enum DepCmd {
 }
 
 #[derive(Subcommand)]
-enum ProjectCmd {
+pub enum ProjectCmd {
     /// (human) rename a project for display
     Alias { key: String, alias: String },
 }
 
 /// What a command returns: the JSON `data` and the plain-text rendering.
-struct Out {
-    data: Value,
-    text: String,
+pub struct Out {
+    pub data: Value,
+    pub text: String,
 }
 
 pub fn run(args: Vec<OsString>) -> i32 {
@@ -244,6 +247,9 @@ pub fn run(args: Vec<OsString>) -> i32 {
     };
     match execute(&cli) {
         Ok(out) => {
+            if matches!(cli.cmd, Cmd::Mcp) {
+                return 0;
+            }
             if cli.json {
                 println!("{}", json!({ "v": 1, "ok": true, "data": out.data }));
             } else if !out.text.is_empty() {
@@ -259,7 +265,11 @@ pub fn run(args: Vec<OsString>) -> i32 {
                 eprintln!("{e}");
                 return 0;
             }
-            emit_error(cli.json, &e);
+            if matches!(cli.cmd, Cmd::Mcp) {
+                eprintln!("fb mcp: {}: {e}", e.code());
+            } else {
+                emit_error(cli.json, &e);
+            }
             e.exit_code()
         }
     }
@@ -277,22 +287,21 @@ fn emit_error(json: bool, e: &FbError) {
 }
 
 /// Everything a command needs about this invocation.
-struct Session<'a> {
-    db: SqliteBackend,
-    cfg: Config,
-    actor: Actor,
-    ctx: Ctx,
-    host: String,
-    cwd: PathBuf,
+pub struct Session {
+    pub db: SqliteBackend,
+    pub cfg: Config,
+    pub actor: Actor,
+    pub ctx: Ctx,
+    pub host: String,
+    pub cwd: PathBuf,
     /// Present only inside a git repo.
-    loc: Option<Location>,
-    cli: &'a Cli,
-    adapter: std::sync::Arc<dyn fleetboard::adapters::RuntimeAdapter>,
+    pub loc: Option<Location>,
+    pub adapter: std::sync::Arc<dyn crate::adapters::RuntimeAdapter>,
 }
 
-fn fb_home(cli: &Cli) -> Result<PathBuf> {
-    if let Some(h) = &cli.home {
-        return Ok(h.clone());
+pub fn fb_home_path(home: Option<&Path>) -> Result<PathBuf> {
+    if let Some(h) = home {
+        return Ok(h.to_path_buf());
     }
     if let Some(h) = std::env::var_os("FB_HOME").filter(|h| !h.is_empty()) {
         return Ok(PathBuf::from(h));
@@ -302,9 +311,13 @@ fn fb_home(cli: &Cli) -> Result<PathBuf> {
     Ok(PathBuf::from(home).join(".fleetboard"))
 }
 
+pub fn fb_home(cli: &Cli) -> Result<PathBuf> {
+    fb_home_path(cli.home.as_deref())
+}
+
 /// Process ancestry. Debug builds accept `FB_TEST_CHAIN` (comma-separated names,
 /// possibly empty) so tests do not depend on the agent running the test suite.
-fn proc_chain() -> Vec<ProcInfo> {
+pub fn proc_chain() -> Vec<ProcInfo> {
     #[cfg(debug_assertions)]
     if let Ok(v) = std::env::var("FB_TEST_CHAIN") {
         return v
@@ -320,7 +333,7 @@ fn proc_chain() -> Vec<ProcInfo> {
 }
 
 /// Current time. Debug builds accept `FB_TEST_NOW` (RFC 3339) so tests can move the clock.
-fn now() -> DateTime<Utc> {
+pub fn now() -> DateTime<Utc> {
     #[cfg(debug_assertions)]
     if let Ok(v) = std::env::var("FB_TEST_NOW")
         && let Ok(t) = DateTime::parse_from_rfc3339(&v)
@@ -330,8 +343,53 @@ fn now() -> DateTime<Utc> {
     Utc::now()
 }
 
+pub fn create_session(home: &Path, as_human: bool) -> Result<Session> {
+    let cfg = config::load(home)?;
+    let adapter = crate::adapters::make_adapter(&cfg.adapter, Some(home), Some(cfg.stale_after));
+    let db = SqliteBackend::open(&home.join("board.db"))?;
+
+    let chain = proc_chain();
+    let env = |k: &str| std::env::var(k).ok();
+    let host = gethostname::gethostname().to_string_lossy().into_owned();
+    let cwd = std::env::current_dir()?;
+    let caller = if as_human {
+        identity::resolve_human(&env, &chain).map_err(|e| FbError::HumanOnly(e.to_string()))?
+    } else {
+        identity::resolve_agent(&env, &chain, &host, &cwd)
+    };
+    let ctx = Ctx {
+        now: now(),
+        pid: std::process::id(),
+        ppid: std::os::unix::process::parent_id(),
+        proc_chain: chain
+            .iter()
+            .map(|p| p.name.as_str())
+            .collect::<Vec<_>>()
+            .join(" < "),
+        source: None,
+    };
+    let actor = db.resolve_actor(&caller, &ctx)?;
+    let loc = gitinfo::instance(&cwd).map(|i| Location {
+        host: host.clone(),
+        cwd: i.toplevel.to_string_lossy().into_owned(),
+        branch: i.branch,
+        head: i.head,
+    });
+    db.touch(&actor, loc.as_ref(), &ctx)?;
+    Ok(Session {
+        db,
+        cfg,
+        actor,
+        ctx,
+        host,
+        cwd,
+        loc,
+        adapter,
+    })
+}
+
 fn serve_cmd(cli: &Cli, home: &Path, port: u16) -> Result<Out> {
-    let token = fleetboard::server::auth::generate_random_token();
+    let token = crate::server::auth::generate_random_token();
     let bind_addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -364,15 +422,15 @@ fn serve_cmd(cli: &Cli, home: &Path, port: u16) -> Result<Out> {
             println!("One-time login token: {token}");
         }
 
-        let config = fleetboard::server::ServerConfig {
+        let config = crate::server::ServerConfig {
             addr: local_addr,
             token,
             home: home.to_path_buf(),
         };
-        let state = fleetboard::server::AppState::new(config)
+        let state = crate::server::AppState::new(config)
             .map_err(|e| FbError::Store(format!("failed to initialize server state: {e}")))?;
 
-        fleetboard::server::run_server(listener, state)
+        crate::server::run_server(listener, state)
             .await
             .map_err(|e| FbError::Store(format!("server error: {e}")))
     })?;
@@ -383,13 +441,13 @@ fn serve_cmd(cli: &Cli, home: &Path, port: u16) -> Result<Out> {
     })
 }
 
-fn is_claude_payload(p: &fleetboard::adapters::hooks::HookStdinPayload) -> bool {
+fn is_claude_payload(p: &crate::adapters::hooks::HookStdinPayload) -> bool {
     p.source.is_some() || p.transcript_path.is_some() || p.permission_mode.is_some()
 }
 
 fn is_claude_caller(
     caller: &identity::Caller,
-    payload: Option<&fleetboard::adapters::hooks::HookStdinPayload>,
+    payload: Option<&crate::adapters::hooks::HookStdinPayload>,
 ) -> bool {
     if caller.provider.as_deref() == Some("claude") {
         return true;
@@ -412,12 +470,12 @@ fn is_claude_caller(
 
 fn fallback_hook_out(
     cli: &Cli,
-    hook_event: Option<fleetboard::adapters::hooks::HookEvent>,
+    hook_event: Option<crate::adapters::hooks::HookEvent>,
     is_claude: bool,
     caller: &identity::Caller,
     host: &str,
 ) -> Out {
-    if hook_event == Some(fleetboard::adapters::hooks::HookEvent::SessionStart) {
+    if hook_event == Some(crate::adapters::hooks::HookEvent::SessionStart) {
         let prime_text = format!(
             "fleetboard — you are {} on host {}\nYou have no active claim.\nNo claim? fb ready, then fb claim <id>. New work you find: fb add \"…\" (lands as a draft).\n",
             caller.label, host
@@ -503,7 +561,7 @@ fn build_prime_text(
 }
 
 fn hook_cmd(cli: &Cli, home_res: Result<PathBuf>, event_arg: &str) -> Result<Out> {
-    use fleetboard::adapters::hooks::{HookEvent, HookStdinPayload};
+    use crate::adapters::hooks::{HookEvent, HookStdinPayload};
     use std::io::IsTerminal;
 
     let hook_event = HookEvent::parse(event_arg);
@@ -707,55 +765,15 @@ fn execute(cli: &Cli) -> Result<Out> {
     if let Cmd::Serve { port } = &cli.cmd {
         return serve_cmd(cli, &home, *port);
     }
-    let cfg = config::load(&home)?;
-    let adapter =
-        fleetboard::adapters::make_adapter(&cfg.adapter, Some(&home), Some(cfg.stale_after));
-    let db = SqliteBackend::open(&home.join("board.db"))?;
-
-    let chain = proc_chain();
-    let env = |k: &str| std::env::var(k).ok();
-    let host = gethostname::gethostname().to_string_lossy().into_owned();
-    let cwd = std::env::current_dir()?;
-    let caller = if cli.as_human {
-        identity::resolve_human(&env, &chain).map_err(|e| FbError::HumanOnly(e.to_string()))?
-    } else {
-        identity::resolve_agent(&env, &chain, &host, &cwd)
-    };
-    let ctx = Ctx {
-        now: now(),
-        pid: std::process::id(),
-        ppid: std::os::unix::process::parent_id(),
-        proc_chain: chain
-            .iter()
-            .map(|p| p.name.as_str())
-            .collect::<Vec<_>>()
-            .join(" < "),
-        source: None,
-    };
-    let actor = db.resolve_actor(&caller, &ctx)?;
-    let loc = gitinfo::instance(&cwd).map(|i| Location {
-        host: host.clone(),
-        cwd: i.toplevel.to_string_lossy().into_owned(),
-        branch: i.branch,
-        head: i.head,
-    });
-    db.touch(&actor, loc.as_ref(), &ctx)?;
-    let s = Session {
-        db,
-        cfg,
-        actor,
-        ctx,
-        host,
-        cwd,
-        loc,
-        cli,
-        adapter,
-    };
-    dispatch(&s)
+    if let Cmd::Mcp = &cli.cmd {
+        return crate::mcp::run_stdio_server(&home, cli.as_human);
+    }
+    let s = create_session(&home, cli.as_human)?;
+    dispatch(&s, &cli.cmd)
 }
 
-fn dispatch(s: &Session) -> Result<Out> {
-    match &s.cli.cmd {
+pub fn dispatch(s: &Session, cmd: &Cmd) -> Result<Out> {
+    match cmd {
         Cmd::Add {
             title,
             goal,
@@ -1086,7 +1104,7 @@ fn dispatch(s: &Session) -> Result<Out> {
             })
         }
         Cmd::Trust { actor } | Cmd::Untrust { actor } => {
-            let trusted = matches!(s.cli.cmd, Cmd::Trust { .. });
+            let trusted = matches!(cmd, Cmd::Trust { .. });
             let target = s.db.find_actor(actor)?;
             let a = s.db.set_trusted(&s.actor, &target, trusted, &s.ctx)?;
             Ok(Out {
@@ -1111,7 +1129,7 @@ fn dispatch(s: &Session) -> Result<Out> {
                 data: json!({ "project": { "key": p.key, "alias": p.alias, "name": p.display() } }),
             })
         }
-        Cmd::Serve { .. } | Cmd::Hook { .. } => unreachable!("handled in execute"),
+        Cmd::Serve { .. } | Cmd::Hook { .. } | Cmd::Mcp => unreachable!("handled in execute"),
     }
 }
 
@@ -1276,7 +1294,7 @@ fn latest_claim(s: &Session, t: &TaskRow) -> Option<ClaimRow> {
 
 fn claim_is_stale(s: &Session, c: &ClaimRow) -> bool {
     if let Some(status) = s.adapter.agent_status(&c.actor.external_id)
-        && status == fleetboard::adapters::AgentRuntimeStatus::Gone
+        && status == crate::adapters::AgentRuntimeStatus::Gone
     {
         return true;
     }

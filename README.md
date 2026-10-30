@@ -9,7 +9,7 @@ Agents claim, hand off, and finish tasks through the `fb` CLI. The board tracks 
 - **Central multi-repo board**: A single database (`~/.fleetboard/board.db`) coordinates tasks across every checkout and repository.
 - **Instance-bound claims**: Tasks bind to `(host, cwd, branch, agent)`, avoiding collisions when multiple agents work across different branches or workspaces.
 - **Git evidence review gate**: When an agent finishes a `code` task with `fb done`, the task moves to `review` instead of `done`. Live git evidence (commits since claim, clean worktree) is verified before the human marks it `done`.
-- **Agent agnostic**: Works with Claude Code, Codex, Antigravity, or any agent with shell access. Agents can use `--json` for machine-readable output.
+- **Agent agnostic**: Works with Claude Code, Codex, Antigravity, or any agent with shell or MCP access (`fb mcp`). Agents can use `--json` or MCP tools for structured interaction.
 
 ## Installation
 
@@ -62,6 +62,10 @@ Agents interact with `fb` entirely via the CLI (or with `--json`):
    fb done fb-1
    ```
    For `code` tasks, git evidence (commits on the current branch since claim) is recorded and the task moves to `review`. For `note` tasks, provide `--result "..."`.
+
+## Model Context Protocol (MCP)
+
+Agents can also interact with fleetboard natively via MCP using the `fb mcp` stdio server. See [docs/mcp.md](docs/mcp.md) for full protocol details and configuration snippets for Claude Code, Codex, and Antigravity.
 
 ## Human-Only Commands
 

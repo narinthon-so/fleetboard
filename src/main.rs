@@ -1,5 +1,3 @@
-mod cli;
-
 fn main() {
-    std::process::exit(cli::run(std::env::args_os().collect()));
+    std::process::exit(fleetboard::cli::run(std::env::args_os().collect()));
 }
