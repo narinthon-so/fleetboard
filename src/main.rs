@@ -1,3 +1,6 @@
+mod cli;
+mod config;
+
 fn main() {
-    println!("fb: not implemented yet");
+    std::process::exit(cli::run(std::env::args_os().collect()));
 }

@@ -1,0 +1,94 @@
+---
+source: tests/json_contract.rs
+expression: "snap(&e, &r)"
+---
+{
+  "data": {
+    "actor": {
+      "external_id": "agent-aaaaaaa",
+      "id": 2,
+      "kind": "agent",
+      "label": "<label>",
+      "provider": "codex",
+      "trusted": false
+    },
+    "claims": [
+      {
+        "last_handoff": {
+          "age_seconds": 0,
+          "author": "<label>",
+          "body": "Bucket done, tests next."
+        },
+        "task": {
+          "acceptance": "- [ ] 429 after 100 req/min",
+          "blocked_by": [],
+          "claim": {
+            "actor": {
+              "external_id": "agent-aaaaaaa",
+              "id": 2,
+              "kind": "agent",
+              "label": "<label>",
+              "provider": "codex",
+              "trusted": false
+            },
+            "base_commit": "<sha>",
+            "branch": "feature",
+            "claimed_at": "<ts>",
+            "cwd": "<work>",
+            "host": "<host>",
+            "id": 1,
+            "last_activity": "<ts>",
+            "release_reason": null,
+            "released_at": null,
+            "workspace_id": null
+          },
+          "created_at": "<ts>",
+          "created_by": {
+            "external_id": "agent-aaaaaaa",
+            "id": 2,
+            "kind": "agent",
+            "label": "<label>",
+            "provider": "codex",
+            "trusted": false
+          },
+          "derived": {
+            "blocked": false,
+            "needs_me": true,
+            "no_evidence": false,
+            "orphaned": false,
+            "plan_pending": false,
+            "ready": false,
+            "stale": false
+          },
+          "goal": "Protect the API",
+          "id": "fb-1",
+          "kind": "code",
+          "needs_plan_approval": false,
+          "plan": "Add a token bucket.",
+          "plan_approved_at": null,
+          "priority": 1,
+          "project": {
+            "alias": null,
+            "key": "github.com/Org/Repo",
+            "name": "Repo"
+          },
+          "result": null,
+          "status": "review",
+          "ticket": {
+            "key": "ABC-36",
+            "system": "jira",
+            "title": "Hardening",
+            "url": null
+          },
+          "title": "Rate-limit public endpoints",
+          "updated_at": "<ts>"
+        }
+      }
+    ],
+    "host": "<host>",
+    "project": "github.com/Org/Repo",
+    "text": "fleetboard — you are <label> on host <host>, project github.com/Org/Repo\nYour claim: fb-1 \"Rate-limit public endpoints\" (review)\nLast handoff (<label>, just now):\n  Bucket done, tests next.\nWorkflow: fb show fb-1 · fb note fb-1 \"…\" (handoff before you stop) · fb done fb-1\nNo claim? fb ready, then fb claim <id>. New work you find: fb add \"…\" (lands as a draft).\n"
+  },
+  "ok": true,
+  "v": 1
+}

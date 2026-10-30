@@ -803,17 +803,17 @@ impl Backend for SqliteBackend {
                 return load_task(tx, id);
             }
 
-            match task.status {
-                Status::InProgress => {
-                    let held = task.claim.as_ref().expect("in_progress task has a claim");
-                    if held.actor.id == actor.id {
-                        return Ok(task); // already yours: claiming again is a no-op
-                    }
-                    return Err(FbError::ClaimHeld(format!(
-                        "{label} is claimed by {}",
-                        held.actor.label
-                    )));
+            // An active claim blocks everyone else, whatever the status (in_progress or review).
+            if let Some(held) = &task.claim {
+                if held.actor.id == actor.id {
+                    return Ok(task); // already yours: claiming again is a no-op
                 }
+                return Err(FbError::ClaimHeld(format!(
+                    "{label} is claimed by {}",
+                    held.actor.label
+                )));
+            }
+            match task.status {
                 Status::Draft => {
                     return Err(FbError::NotReady(format!(
                         "{label} is a draft; a human must promote it first"
