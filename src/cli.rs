@@ -182,6 +182,7 @@ pub enum Cmd {
         cmd: ProjectCmd,
     },
     /// Start the loopback HTTP server and web UI
+    /// Start the loopback HTTP server and web UI
     Serve {
         /// Port to listen on (default: 7878)
         #[arg(long, default_value_t = 7878)]
@@ -189,6 +190,11 @@ pub enum Cmd {
     },
     /// Start the stdio Model Context Protocol (MCP) server
     Mcp,
+    /// Record agent lifecycle hook event (session-start | stop | tool-use | prompt)
+    Hook {
+        /// session-start | stop | tool-use | prompt
+        event: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -217,10 +223,15 @@ pub struct Out {
 }
 
 pub fn run(args: Vec<OsString>) -> i32 {
+    let is_hook = args.iter().any(|a| a == "hook");
     let json_flag = args.iter().any(|a| a == "--json");
     let cli = match Cli::try_parse_from(&args) {
         Ok(c) => c,
         Err(e) => {
+            if is_hook {
+                eprintln!("{e}");
+                return 0;
+            }
             if !e.use_stderr() {
                 let _ = e.print();
                 return 0;
@@ -241,7 +252,7 @@ pub fn run(args: Vec<OsString>) -> i32 {
             }
             if cli.json {
                 println!("{}", json!({ "v": 1, "ok": true, "data": out.data }));
-            } else {
+            } else if !out.text.is_empty() {
                 print!("{}", out.text);
                 if !out.text.ends_with('\n') {
                     println!();
@@ -250,6 +261,10 @@ pub fn run(args: Vec<OsString>) -> i32 {
             0
         }
         Err(e) => {
+            if is_hook {
+                eprintln!("{e}");
+                return 0;
+            }
             if matches!(cli.cmd, Cmd::Mcp) {
                 eprintln!("fb mcp: {}: {e}", e.code());
             } else {
@@ -330,7 +345,7 @@ pub fn now() -> DateTime<Utc> {
 
 pub fn create_session(home: &Path, as_human: bool) -> Result<Session> {
     let cfg = config::load(home)?;
-    let adapter = crate::adapters::make_adapter(&cfg.adapter);
+    let adapter = crate::adapters::make_adapter(&cfg.adapter, Some(home), Some(cfg.stale_after));
     let db = SqliteBackend::open(&home.join("board.db"))?;
 
     let chain = proc_chain();
@@ -426,8 +441,326 @@ fn serve_cmd(cli: &Cli, home: &Path, port: u16) -> Result<Out> {
     })
 }
 
+fn is_claude_payload(p: &crate::adapters::hooks::HookStdinPayload) -> bool {
+    p.source.is_some() || p.transcript_path.is_some() || p.permission_mode.is_some()
+}
+
+fn is_claude_caller(
+    caller: &identity::Caller,
+    payload: Option<&crate::adapters::hooks::HookStdinPayload>,
+) -> bool {
+    if caller.provider.as_deref() == Some("claude") {
+        return true;
+    }
+    if std::env::var("CLAUDECODE").is_ok() || std::env::var("CLAUDE_CODE_SESSION_ID").is_ok() {
+        return true;
+    }
+    if let Some(p) = payload {
+        if let Some(ref prov) = p.provider
+            && prov.to_ascii_lowercase().contains("claude")
+        {
+            return true;
+        }
+        if is_claude_payload(p) {
+            return true;
+        }
+    }
+    false
+}
+
+fn fallback_hook_out(
+    cli: &Cli,
+    hook_event: Option<crate::adapters::hooks::HookEvent>,
+    is_claude: bool,
+    caller: &identity::Caller,
+    host: &str,
+) -> Out {
+    if hook_event == Some(crate::adapters::hooks::HookEvent::SessionStart) {
+        let prime_text = format!(
+            "fleetboard — you are {} on host {}\nYou have no active claim.\nNo claim? fb ready, then fb claim <id>. New work you find: fb add \"…\" (lands as a draft).\n",
+            caller.label, host
+        );
+        if is_claude {
+            let json_out = json!({
+                "hookSpecificOutput": {
+                    "hookEventName": "SessionStart",
+                    "additionalContext": prime_text
+                }
+            });
+            let rendered = serde_json::to_string(&json_out).unwrap_or_default();
+            Out {
+                data: json_out,
+                text: rendered,
+            }
+        } else {
+            Out {
+                data: json!({ "prime": prime_text }),
+                text: prime_text,
+            }
+        }
+    } else if cli.json {
+        Out {
+            data: json!({ "recorded": false }),
+            text: String::new(),
+        }
+    } else {
+        Out {
+            data: Value::Null,
+            text: String::new(),
+        }
+    }
+}
+
+fn build_prime_text(
+    db: &SqliteBackend,
+    actor: &Actor,
+    host: &str,
+    cwd: &Path,
+    ctx: &Ctx,
+) -> String {
+    let project = gitinfo::project_key(cwd);
+    let tasks = db
+        .list_tasks(&TaskFilter {
+            claimant: Some(actor.id),
+            ..Default::default()
+        })
+        .unwrap_or_default();
+    let mut claims = Vec::new();
+    for t in &tasks {
+        let detail = db.task_detail(t.id).ok();
+        let handoff = detail.as_ref().and_then(|d| {
+            d.notes
+                .iter()
+                .rev()
+                .find(|n| n.kind == "handoff")
+                .map(|n| Handoff {
+                    author: n.actor.label.clone(),
+                    age: ctx.now - n.created_at,
+                    body: n.body.clone(),
+                })
+        });
+        let plan = match (t.needs_plan_approval, t.plan_approved_at.is_some()) {
+            (false, _) => PlanState::NotRequired,
+            (true, true) => PlanState::Approved,
+            (true, false) => PlanState::Pending,
+        };
+        claims.push(PrimeClaim {
+            id: fmt_id(t.id),
+            title: t.title.clone(),
+            status: t.status.as_str().to_string(),
+            plan,
+            handoff,
+        });
+    }
+    prime::render(&PrimeInput {
+        label: actor.label.clone(),
+        host: host.to_string(),
+        project,
+        claims,
+    })
+}
+
+fn hook_cmd(cli: &Cli, home_res: Result<PathBuf>, event_arg: &str) -> Result<Out> {
+    use crate::adapters::hooks::{HookEvent, HookStdinPayload};
+    use std::io::IsTerminal;
+
+    let hook_event = HookEvent::parse(event_arg);
+    if hook_event.is_none() {
+        eprintln!("warning: unrecognized hook event: {event_arg:?}");
+    }
+
+    let mut stdin_str = String::new();
+    if !std::io::stdin().is_terminal() {
+        let _ = std::io::stdin().read_to_string(&mut stdin_str);
+    }
+
+    let payload: Option<HookStdinPayload> = if stdin_str.trim().is_empty() {
+        None
+    } else {
+        match serde_json::from_str::<HookStdinPayload>(&stdin_str) {
+            Ok(p) => Some(p),
+            Err(err) => {
+                eprintln!("warning: failed to parse hook stdin JSON: {err}");
+                None
+            }
+        }
+    };
+
+    let chain = proc_chain();
+    let host = gethostname::gethostname().to_string_lossy().into_owned();
+
+    let cwd = payload
+        .as_ref()
+        .and_then(|p| p.cwd.as_deref())
+        .map(PathBuf::from)
+        .filter(|p| p.exists())
+        .or_else(|| std::env::current_dir().ok())
+        .unwrap_or_else(|| PathBuf::from("."));
+
+    let env = |k: &str| -> Option<String> {
+        if let Ok(v) = std::env::var(k) {
+            return Some(v);
+        }
+        if let Some(ref p) = payload {
+            if let Some(ref sid) = p.session_id
+                && k == "CLAUDE_CODE_SESSION_ID"
+            {
+                return Some(sid.clone());
+            }
+            if let Some(ref prov) = p.provider
+                && k == "AI_AGENT"
+            {
+                return Some(prov.clone());
+            }
+        }
+        None
+    };
+
+    let mut caller = identity::resolve_agent(&env, &chain, &host, &cwd);
+    if let Some(ref p) = payload
+        && let Some(ref sid) = p.session_id
+        && (caller.external_id.starts_with("anon:")
+            || caller.provider.as_deref() == Some("unknown"))
+    {
+        let prov = if let Some(ref p_prov) = p.provider {
+            identity::normalize_provider(p_prov).to_string()
+        } else if is_claude_payload(p) {
+            "claude".to_string()
+        } else if let Some(ref cp) = caller.provider {
+            if cp != "unknown" {
+                cp.clone()
+            } else {
+                "unknown".to_string()
+            }
+        } else {
+            "unknown".to_string()
+        };
+        let short_sid: String = sid.chars().take(7).collect();
+        caller.label = format!("{prov} {short_sid}");
+        caller.provider = Some(prov);
+        caller.external_id = sid.clone();
+    }
+
+    let is_claude = is_claude_caller(&caller, payload.as_ref());
+
+    let home = match home_res {
+        Ok(h) => h,
+        Err(e) => {
+            eprintln!("warning: fleetboard board database not found: {e}");
+            return Ok(fallback_hook_out(
+                cli, hook_event, is_claude, &caller, &host,
+            ));
+        }
+    };
+
+    let db_path = home.join("board.db");
+    if !db_path.exists() {
+        eprintln!(
+            "warning: fleetboard database not found at {}",
+            db_path.display()
+        );
+        return Ok(fallback_hook_out(
+            cli, hook_event, is_claude, &caller, &host,
+        ));
+    }
+
+    if let Err(e) = std::fs::create_dir_all(&home) {
+        eprintln!("warning: failed to create fleetboard home dir: {e}");
+        return Ok(fallback_hook_out(
+            cli, hook_event, is_claude, &caller, &host,
+        ));
+    }
+
+    let db = match SqliteBackend::open(&db_path) {
+        Ok(db) => db,
+        Err(e) => {
+            eprintln!(
+                "warning: could not open fleetboard database at {}: {e}",
+                db_path.display()
+            );
+            return Ok(fallback_hook_out(
+                cli, hook_event, is_claude, &caller, &host,
+            ));
+        }
+    };
+
+    let ctx = Ctx {
+        now: now(),
+        pid: std::process::id(),
+        ppid: std::os::unix::process::parent_id(),
+        proc_chain: chain
+            .iter()
+            .map(|p| p.name.as_str())
+            .collect::<Vec<_>>()
+            .join(" < "),
+        source: None,
+    };
+
+    let actor = match db.resolve_actor(&caller, &ctx) {
+        Ok(a) => a,
+        Err(e) => {
+            eprintln!("warning: failed to resolve actor: {e}");
+            return Ok(fallback_hook_out(
+                cli, hook_event, is_claude, &caller, &host,
+            ));
+        }
+    };
+
+    // Bump actor activity on any active claims
+    let loc = gitinfo::instance(&cwd).map(|i| Location {
+        host: host.clone(),
+        cwd: i.toplevel.to_string_lossy().into_owned(),
+        branch: i.branch,
+        head: i.head,
+    });
+    let _ = db.touch(&actor, loc.as_ref(), &ctx);
+
+    // Record the hook event
+    let canonical_event = hook_event.map_or(event_arg, |e| e.as_str());
+    let raw_val: Option<Value> = serde_json::from_str(&stdin_str).ok();
+    if let Err(e) = db.record_hook_event(&actor, canonical_event, raw_val.as_ref(), &ctx) {
+        eprintln!("warning: failed to record hook event: {e}");
+    }
+
+    if hook_event == Some(HookEvent::SessionStart) {
+        let prime_text = build_prime_text(&db, &actor, &host, &cwd, &ctx);
+        if is_claude {
+            let json_out = json!({
+                "hookSpecificOutput": {
+                    "hookEventName": "SessionStart",
+                    "additionalContext": prime_text
+                }
+            });
+            let rendered = serde_json::to_string(&json_out).unwrap_or_default();
+            Ok(Out {
+                data: json_out,
+                text: rendered,
+            })
+        } else {
+            Ok(Out {
+                data: json!({ "prime": prime_text }),
+                text: prime_text,
+            })
+        }
+    } else if cli.json {
+        Ok(Out {
+            data: json!({ "event": canonical_event, "recorded": true }),
+            text: String::new(),
+        })
+    } else {
+        Ok(Out {
+            data: Value::Null,
+            text: String::new(),
+        })
+    }
+}
+
 fn execute(cli: &Cli) -> Result<Out> {
-    let home = fb_home(cli)?;
+    let home_res = fb_home(cli);
+    if let Cmd::Hook { event } = &cli.cmd {
+        return hook_cmd(cli, home_res, event);
+    }
+    let home = home_res?;
     std::fs::create_dir_all(&home)?;
     if let Cmd::Serve { port } = &cli.cmd {
         return serve_cmd(cli, &home, *port);
@@ -796,8 +1129,7 @@ pub fn dispatch(s: &Session, cmd: &Cmd) -> Result<Out> {
                 data: json!({ "project": { "key": p.key, "alias": p.alias, "name": p.display() } }),
             })
         }
-        Cmd::Serve { .. } => unreachable!("serve handled in execute"),
-        Cmd::Mcp => unreachable!("mcp handled in execute"),
+        Cmd::Serve { .. } | Cmd::Hook { .. } | Cmd::Mcp => unreachable!("handled in execute"),
     }
 }
 
