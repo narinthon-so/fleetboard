@@ -79,13 +79,33 @@ impl Env {
         git_in(&self.work_path, args)
     }
 
+    pub fn git_with_env(&self, args: &[&str], env: &[(&str, &str)]) -> String {
+        git_in_with_env(&self.work_path, args, env)
+    }
+
     pub fn write(&self, name: &str, body: &str) {
         std::fs::write(self.work_path.join(name), body).unwrap();
     }
 
     pub fn commit(&self, msg: &str) {
         self.git(&["add", "-A"]);
-        self.git(&["commit", "-q", "-m", msg]);
+        if let Some(now) = self.now.borrow().as_ref() {
+            self.git_with_env(
+                &["commit", "-q", "-m", msg],
+                &[("GIT_AUTHOR_DATE", now), ("GIT_COMMITTER_DATE", now)],
+            );
+        } else {
+            self.git(&["commit", "-q", "-m", msg]);
+        }
+    }
+
+    pub fn commit_at(&self, msg: &str, when: chrono::DateTime<chrono::Utc>) {
+        let ts = when.to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+        self.git(&["add", "-A"]);
+        self.git_with_env(
+            &["commit", "-q", "-m", msg],
+            &[("GIT_AUTHOR_DATE", &ts), ("GIT_COMMITTER_DATE", &ts)],
+        );
     }
 
     pub fn head(&self) -> String {
@@ -168,15 +188,21 @@ fn finish(mut c: Command) -> Run {
 }
 
 pub fn git_in(dir: &Path, args: &[&str]) -> String {
-    let out = Proc::new("git")
-        .arg("-C")
+    git_in_with_env(dir, args, &[])
+}
+
+pub fn git_in_with_env(dir: &Path, args: &[&str], env: &[(&str, &str)]) -> String {
+    let mut cmd = Proc::new("git");
+    cmd.arg("-C")
         .arg(dir)
         .args(["-c", "user.name=Test", "-c", "user.email=test@example.com"])
         .args(["-c", "commit.gpgsign=false"])
         .args(args)
-        .env("GIT_CONFIG_GLOBAL", "/dev/null")
-        .output()
-        .unwrap();
+        .env("GIT_CONFIG_GLOBAL", "/dev/null");
+    for (k, v) in env {
+        cmd.env(k, v);
+    }
+    let out = cmd.output().unwrap();
     assert!(
         out.status.success(),
         "git {args:?}: {}",
