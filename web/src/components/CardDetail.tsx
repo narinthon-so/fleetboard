@@ -121,7 +121,7 @@ export function CardDetail({
   function handleVerifyClick() {
     if (!task || isReadOnly) return;
     const hasEvidence = task.evidence && task.evidence.commits > 0;
-    if (!hasEvidence || task.derived.no_evidence) {
+    if (task.kind === 'code' && (!hasEvidence || task.derived.no_evidence)) {
       // Must ask for confirmation
       setIsConfirmVerifyOpen(true);
     } else {
