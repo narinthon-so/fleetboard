@@ -3,6 +3,7 @@
 pub mod api;
 pub mod auth;
 pub mod events;
+pub mod web;
 
 use std::collections::HashSet;
 use std::net::SocketAddr;
@@ -66,6 +67,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/board", get(api::board_handler))
         .route("/api/tasks/{id}", get(api::task_detail_handler))
         .route("/api/events", get(events::events_handler))
+        .fallback(web::static_handler)
         .layer(middleware::from_fn_with_state(
             state.clone(),
             auth::auth_middleware,

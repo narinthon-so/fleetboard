@@ -1,0 +1,97 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #09090b;
+  --card: #ffffff;
+  --card-foreground: #09090b;
+  --popover: #ffffff;
+  --popover-foreground: #09090b;
+  --primary: #18181b;
+  --primary-foreground: #fafafa;
+  --secondary: #f4f4f5;
+  --secondary-foreground: #18181b;
+  --muted: #f4f4f5;
+  --muted-foreground: #71717a;
+  --accent: #f4f4f5;
+  --accent-foreground: #18181b;
+  --destructive: #ef4444;
+  --destructive-foreground: #fafafa;
+  --border: #e4e4e7;
+  --input: #e4e4e7;
+  --ring: #18181b;
+  --radius: 0.375rem;
+
+  /* Semantic tokens (Light) */
+  --status-draft: #71717a;
+  --status-todo: #52525b;
+  --status-progress: #0284c7;
+  --status-review: #d97706;
+  --status-done: #059669;
+  --status-dropped: #71717a;
+
+  --signal-needs-me: #8b5cf6;
+  --signal-stale: #ea580c;
+  --signal-no-evidence: #ef4444;
+  --signal-blocked: #71717a;
+  --signal-orphaned: #dc2626;
+
+  --priority-p0: #dc2626;
+  --priority-p1: #d97706;
+  --priority-p2: #09090b;
+  --priority-p3: #71717a;
+}
+
+/* Dark mode by default */
+.dark, :root:not(.light) {
+  --background: #09090b;
+  --foreground: #fafafa;
+  --card: #121215;
+  --card-foreground: #fafafa;
+  --popover: #121215;
+  --popover-foreground: #fafafa;
+  --primary: #fafafa;
+  --primary-foreground: #18181b;
+  --secondary: #27272a;
+  --secondary-foreground: #fafafa;
+  --muted: #27272a;
+  --muted-foreground: #a1a1aa;
+  --accent: #27272a;
+  --accent-foreground: #fafafa;
+  --destructive: #7f1d1d;
+  --destructive-foreground: #fafafa;
+  --border: #27272a;
+  --input: #27272a;
+  --ring: #d4d4d8;
+
+  /* Semantic tokens (Dark) */
+  --status-draft: #71717a; /* zinc-500 */
+  --status-todo: #d4d4d8; /* zinc-300 */
+  --status-progress: #38bdf8; /* sky-400 */
+  --status-review: #fbbf24; /* amber-400 */
+  --status-done: #34d399; /* emerald-400 */
+  --status-dropped: #52525b; /* zinc-600 */
+
+  --signal-needs-me: #a78bfa; /* violet-400 */
+  --signal-stale: #fb923c; /* orange-400 */
+  --signal-no-evidence: #f87171; /* red-400 */
+  --signal-blocked: #a1a1aa; /* zinc-400 */
+  --signal-orphaned: #f87171; /* red-400 */
+
+  --priority-p0: #f87171; /* red-400 */
+  --priority-p1: #fbbf24; /* amber-400 */
+  --priority-p2: #fafafa; /* default */
+  --priority-p3: #a1a1aa; /* muted */
+}
+
+body {
+  font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 13px;
+  line-height: 1.4;
+  margin: 0;
+  padding: 0;
+}
+
+code, pre, .font-mono {
+  font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
