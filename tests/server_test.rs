@@ -408,7 +408,8 @@ async fn test_cli_serve_subcommand_prints_token_and_serves() {
     assert_eq!(json_val["ok"], true);
     let port = json_val["data"]["port"].as_u64().unwrap() as u16;
     let token = json_val["data"]["token"].as_str().unwrap().to_string();
-    assert!(!token.is_empty());
+    assert_eq!(token.len(), 64);
+    assert!(token.chars().all(|c| c.is_ascii_hexdigit()));
 
     // Connect to the started server and verify login works with the printed token
     let client = reqwest::Client::new();
@@ -423,4 +424,18 @@ async fn test_cli_serve_subcommand_prints_token_and_serves() {
     // Clean up child process
     let _ = child.kill();
     let _ = child.wait();
+}
+
+#[test]
+fn test_tokens_generated_with_csprng_differ_and_have_expected_length() {
+    let t1 = fleetboard::server::auth::generate_random_token();
+    let t2 = fleetboard::server::auth::generate_random_token();
+    assert_eq!(t1.len(), 64);
+    assert_eq!(t2.len(), 64);
+    assert_ne!(t1, t2);
+    assert!(t1.chars().all(|c| c.is_ascii_hexdigit()));
+    assert!(t2.chars().all(|c| c.is_ascii_hexdigit()));
+    assert!(fleetboard::server::auth::constant_time_eq(&t1, &t1));
+    assert!(!fleetboard::server::auth::constant_time_eq(&t1, &t2));
+    assert!(!fleetboard::server::auth::constant_time_eq(&t1, "short"));
 }

@@ -12,10 +12,11 @@ The HTTP server binds strictly to the loopback interface (`127.0.0.1`, default p
 `fb serve` binds only to `127.0.0.1:<port>` (IPv4 loopback), never `0.0.0.0` or public network interfaces.
 
 ### 2. One-Time Login Token
-When `fb serve` starts, it generates a high-entropy 32-character alphanumeric token in memory:
+When `fb serve` starts, it generates a high-entropy 32-byte token using the OS CSPRNG (`getrandom`), encoded as a 64-character lowercase hex string in memory:
 - The token is printed directly to stdout in the human operator's terminal.
 - The token is **never** written to disk or persisted in logs or database files.
 - The token can be used **only once**. As soon as `POST /api/login` exchanges it, the token is consumed and invalidated.
+- Token validation during login is performed in constant time (`subtle::ConstantTimeEq`) to prevent timing attacks.
 
 ### 3. Session Cookie
 Exchanging the one-time token sets an `HttpOnly`, `SameSite=Strict` cookie named `fb_session`.

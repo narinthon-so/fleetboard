@@ -1,5 +1,6 @@
 //! Authentication, session cookies, and X-Requested-With verification.
 
+use std::fmt::Write;
 use std::sync::Arc;
 
 use axum::extract::{Request, State};
@@ -8,11 +9,29 @@ use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use serde::Deserialize;
 use serde_json::json;
+use subtle::ConstantTimeEq;
 
 use super::AppState;
 
+/// Generates a cryptographically secure token using the OS CSPRNG (32 bytes, 64 hex chars).
 pub fn generate_random_token() -> String {
-    (0..32).map(|_| fastrand::alphanumeric()).collect()
+    let mut bytes = [0u8; 32];
+    getrandom::getrandom(&mut bytes).expect("OS CSPRNG failed to generate random bytes");
+    let mut s = String::with_capacity(64);
+    for b in bytes {
+        let _ = write!(s, "{b:02x}");
+    }
+    s
+}
+
+/// Constant-time string comparison to prevent timing attacks.
+pub fn constant_time_eq(a: &str, b: &str) -> bool {
+    let a_bytes = a.as_bytes();
+    let b_bytes = b.as_bytes();
+    if a_bytes.len() != b_bytes.len() {
+        return false;
+    }
+    a_bytes.ct_eq(b_bytes).into()
 }
 
 fn extract_session_id(cookie_str: &str) -> Option<String> {
@@ -124,7 +143,7 @@ pub async fn login_handler(
 
     let mut token_guard = state.one_time_token.lock().unwrap();
     if let Some(valid_token) = token_guard.as_ref()
-        && *valid_token == payload.token
+        && constant_time_eq(valid_token, &payload.token)
     {
         // One-time: consume the token immediately
         *token_guard = None;
@@ -186,4 +205,38 @@ pub async fn logout_handler(State(state): State<Arc<AppState>>, req: Request) ->
         })),
     )
         .into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_tokens_use_os_csprng_and_have_expected_length_and_differ() {
+        let t1 = generate_random_token();
+        let t2 = generate_random_token();
+
+        // 32 bytes encoded as hex = 64 hex characters
+        assert_eq!(t1.len(), 64);
+        assert_eq!(t2.len(), 64);
+        // Characters must be lowercase hex digits
+        assert!(
+            t1.chars()
+                .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase())
+        );
+        assert!(
+            t2.chars()
+                .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase())
+        );
+
+        // Two generated CSPRNG tokens must not collide
+        assert_ne!(t1, t2);
+
+        // Constant-time equality checks
+        assert!(constant_time_eq(&t1, &t1));
+        assert!(constant_time_eq(&t2, &t2));
+        assert!(!constant_time_eq(&t1, &t2));
+        assert!(!constant_time_eq(&t1, &t1[..32]));
+        assert!(!constant_time_eq(&t1, ""));
+    }
 }
