@@ -121,7 +121,7 @@ pub enum ModelError {
     #[error("{0} is human-only (run it with --as-human from a shell with no agent markers)")]
     HumanOnly(&'static str),
     #[error(
-        "plan awaiting approval: a human must run `fb approve` before the task can go to review"
+        "plan not approved: write one with `fb plan`, then a human approves it with `fb approve`, before `fb done`"
     )]
     PlanNotApproved,
 }

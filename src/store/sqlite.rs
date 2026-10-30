@@ -437,7 +437,7 @@ fn is_claimant(task: &TaskRow, actor: &Actor) -> bool {
 }
 
 fn require_claimant(task: &TaskRow, actor: &Actor, what: &str) -> Result<()> {
-    if is_claimant(task, actor) || matches!(actor.role(), Role::Human | Role::Trusted) {
+    if is_claimant(task, actor) || actor.role() == Role::Human {
         return Ok(());
     }
     let held = match &task.claim {

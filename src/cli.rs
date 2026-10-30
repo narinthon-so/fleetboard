@@ -282,6 +282,17 @@ fn proc_chain() -> Vec<ProcInfo> {
     identity::process_chain()
 }
 
+/// Current time. Debug builds accept `FB_TEST_NOW` (RFC 3339) so tests can move the clock.
+fn now() -> DateTime<Utc> {
+    #[cfg(debug_assertions)]
+    if let Ok(v) = std::env::var("FB_TEST_NOW")
+        && let Ok(t) = DateTime::parse_from_rfc3339(&v)
+    {
+        return t.with_timezone(&Utc);
+    }
+    Utc::now()
+}
+
 fn execute(cli: &Cli) -> Result<Out> {
     let home = fb_home(cli)?;
     std::fs::create_dir_all(&home)?;
@@ -298,9 +309,9 @@ fn execute(cli: &Cli) -> Result<Out> {
         identity::resolve_agent(&env, &chain, &host, &cwd)
     };
     let ctx = Ctx {
-        now: Utc::now(),
+        now: now(),
         pid: std::process::id(),
-        ppid: chain.first().map_or(0, |p| p.pid),
+        ppid: std::os::unix::process::parent_id(),
         proc_chain: chain
             .iter()
             .map(|p| p.name.as_str())

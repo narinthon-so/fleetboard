@@ -451,26 +451,19 @@ fn list_filters() {
 
 #[test]
 fn stale_claims_show_up_in_needs_me_and_activity_keeps_them_fresh() {
+    use chrono::{Duration, Utc};
     let e = Env::new();
-    std::fs::write(
-        e.home.path().join("config.toml"),
-        "gh = false\nstale_after = \"5s\"\n",
-    )
-    .unwrap();
+    let t = Utc::now();
+    let stale = |e: &Env| e.ok(H, &["show", "fb-1"])["task"]["derived"]["stale"].clone();
     e.ok(H, &["add", "slow"]);
+    e.set_now(t);
     e.ok(A, &["claim", "fb-1"]);
-    assert_eq!(
-        e.ok(H, &["show", "fb-1"])["task"]["derived"]["stale"],
-        false
-    );
-    std::thread::sleep(std::time::Duration::from_millis(1500));
+    // Default stale_after is 2h; an fb call by the claimant resets the clock.
+    e.set_now(t + Duration::minutes(90));
     e.ok(A, &["note", "fb-1", "alive", "--kind", "comment"]);
-    std::thread::sleep(std::time::Duration::from_millis(1500));
-    assert_eq!(
-        e.ok(H, &["show", "fb-1"])["task"]["derived"]["stale"],
-        false
-    );
-    std::thread::sleep(std::time::Duration::from_millis(5500));
+    e.set_now(t + Duration::hours(3));
+    assert_eq!(stale(&e), false);
+    e.set_now(t + Duration::hours(4));
     let d = e.ok(H, &["list", "--needs-me"]);
     assert_eq!(d["tasks"][0]["id"], "fb-1");
     assert_eq!(d["tasks"][0]["derived"]["stale"], true);
@@ -480,20 +473,21 @@ fn stale_claims_show_up_in_needs_me_and_activity_keeps_them_fresh() {
 
 #[test]
 fn a_recent_commit_keeps_a_quiet_claim_fresh() {
+    use chrono::{Duration, Utc};
     let e = Env::new();
-    std::fs::write(
-        e.home.path().join("config.toml"),
-        "gh = false\nstale_after = \"2s\"\n",
-    )
-    .unwrap();
+    let t = Utc::now();
     e.ok(H, &["add", "busy"]);
+    // Claimed three hours ago, no fb call since; the branch's last commit is "now".
+    e.set_now(t - Duration::hours(3));
     e.ok(A, &["claim", "fb-1"]);
-    std::thread::sleep(std::time::Duration::from_millis(2500));
-    e.write("w.txt", "w\n");
-    e.commit("progress");
+    let stale = |e: &Env| e.ok(H, &["show", "fb-1"])["task"]["derived"]["stale"].clone();
+    e.set_now(t + Duration::minutes(10));
+    assert_eq!(stale(&e), false);
+    e.set_now(t + Duration::hours(3));
     assert_eq!(
-        e.ok(H, &["show", "fb-1"])["task"]["derived"]["stale"],
-        false
+        stale(&e),
+        true,
+        "once the commit is old too, the claim is stale"
     );
 }
 

@@ -9,6 +9,8 @@ use serde_json::Value;
 use tempfile::TempDir;
 
 pub struct Env {
+    /// `FB_TEST_NOW` for the next runs (RFC 3339), if set.
+    pub now: std::cell::RefCell<Option<String>>,
     pub home: TempDir,
     pub work: TempDir,
     pub work_path: PathBuf,
@@ -55,6 +57,7 @@ impl Env {
         let work = tempfile::tempdir().unwrap();
         let work_path = work.path().canonicalize().unwrap();
         let env = Env {
+            now: Default::default(),
             home,
             work,
             work_path,
@@ -65,6 +68,11 @@ impl Env {
         env.commit("initial");
         std::fs::write(env.home.path().join("config.toml"), "gh = false\n").unwrap();
         env
+    }
+
+    /// Move the fb clock to `now`.
+    pub fn set_now(&self, now: chrono::DateTime<chrono::Utc>) {
+        *self.now.borrow_mut() = Some(now.to_rfc3339_opts(chrono::SecondsFormat::Secs, true));
     }
 
     pub fn git(&self, args: &[&str]) -> String {
@@ -99,6 +107,9 @@ impl Env {
             .env("GIT_CONFIG_GLOBAL", "/dev/null")
             .env("GIT_CONFIG_SYSTEM", "/dev/null")
             .args(args);
+        if let Some(now) = self.now.borrow().as_ref() {
+            c.env("FB_TEST_NOW", now);
+        }
         match who {
             Who::Human => {
                 c.arg("--as-human");
