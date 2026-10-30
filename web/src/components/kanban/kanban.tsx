@@ -1,4 +1,6 @@
 import React from 'react';
+import { useDraggable, useDroppable } from '@dnd-kit/core';
+import { CSS } from '@dnd-kit/utilities';
 import { cn } from '../../lib/utils';
 
 interface KanbanBoardProps {
@@ -25,6 +27,7 @@ interface KanbanColumnProps {
   icon?: React.ReactNode;
   isCollapsed?: boolean;
   onToggleCollapse?: () => void;
+  isReadOnly?: boolean;
   children: React.ReactNode;
   className?: string;
 }
@@ -36,17 +39,25 @@ export function KanbanColumn({
   icon,
   isCollapsed = false,
   onToggleCollapse,
+  isReadOnly = false,
   children,
   className,
 }: KanbanColumnProps) {
+  const { setNodeRef, isOver } = useDroppable({
+    id,
+    disabled: isReadOnly,
+  });
+
   if (isCollapsed) {
     return (
       <div
+        ref={setNodeRef}
         data-column-id={id}
         onClick={onToggleCollapse}
         title={`Click to expand ${title} column`}
         className={cn(
           'w-12 shrink-0 flex flex-col items-center py-3 px-1 rounded-md border border-[var(--border)] bg-[var(--card)]/40 hover:bg-[var(--card)] cursor-pointer transition-colors select-none',
+          isOver && 'ring-2 ring-[var(--primary)] bg-[var(--primary)]/10',
           className
         )}
       >
@@ -63,9 +74,11 @@ export function KanbanColumn({
 
   return (
     <div
+      ref={setNodeRef}
       data-column-id={id}
       className={cn(
-        'flex-1 min-w-[200px] flex flex-col rounded-md border border-[var(--border)] bg-[var(--card)]/30 min-h-0 h-full',
+        'flex-1 min-w-[200px] flex flex-col rounded-md border bg-[var(--card)]/30 min-h-0 h-full transition-colors',
+        isOver ? 'border-[var(--primary)] ring-1 ring-[var(--primary)] bg-[var(--primary)]/5' : 'border-[var(--border)]',
         className
       )}
     >
@@ -111,6 +124,7 @@ interface KanbanCardProps {
   isSelected?: boolean;
   isDraft?: boolean;
   hasNeedsMe?: boolean;
+  isReadOnly?: boolean;
   onClick?: () => void;
   children: React.ReactNode;
   className?: string;
@@ -121,16 +135,35 @@ export function KanbanCard({
   isSelected = false,
   isDraft = false,
   hasNeedsMe = false,
+  isReadOnly = false,
   onClick,
   children,
   className,
 }: KanbanCardProps) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id,
+    disabled: isReadOnly,
+  });
+
+  const style = transform
+    ? {
+        transform: CSS.Translate.toString(transform),
+      }
+    : undefined;
+
   return (
     <div
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
       data-card-id={id}
       tabIndex={0}
       role="button"
-      onClick={onClick}
+      onClick={() => {
+        console.log('KANBAN CARD CLICKED:', id);
+        onClick?.();
+      }}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
@@ -138,13 +171,15 @@ export function KanbanCard({
         }
       }}
       className={cn(
-        'group relative flex flex-col gap-1 p-2.5 rounded-md border text-left cursor-pointer transition-all duration-150',
+        'group relative flex flex-col gap-1 p-2.5 rounded-md border text-left transition-all duration-150',
+        isReadOnly ? 'cursor-default' : 'cursor-grab active:cursor-grabbing',
         'bg-[var(--card)] hover:bg-[var(--accent)]/50 focus:outline-none focus:ring-1 focus:ring-[var(--ring)]',
         isDraft
           ? 'border-[var(--status-draft)] border-dashed'
           : 'border-[var(--border)]',
         hasNeedsMe && 'border-l-[3px] border-l-[var(--signal-needs-me)]',
         isSelected && 'ring-1 ring-[var(--ring)] border-[var(--primary)]',
+        isDragging && 'opacity-30 border-dashed border-[var(--primary)]',
         className
       )}
     >
