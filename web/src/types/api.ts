@@ -99,7 +99,7 @@ export interface Task {
   result: string | null;
   needs_plan_approval: boolean;
   plan_approved_at: string | null;
-  blocked_by: string[];
+  blocked_by: { id: string; status: TaskStatus; title: string }[];
   claim: Claim | null;
   derived: Derived;
   evidence: Evidence | null;

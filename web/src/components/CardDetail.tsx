@@ -78,7 +78,7 @@ export function CardDetail({
 
   // Calculate tasks that this task blocks
   const blocksTasks = useMemo(() => {
-    return allTasks.filter((t) => t.blocked_by && t.blocked_by.includes(taskId));
+    return allTasks.filter((t) => t.blocked_by && t.blocked_by.some((dep) => dep.id === taskId));
   }, [allTasks, taskId]);
 
   // Invalidate queries after action
@@ -581,14 +581,14 @@ export function CardDetail({
                       Blocked By
                     </span>
                     <div className="flex flex-wrap gap-1.5">
-                      {task.blocked_by.map((depId) => (
+                      {task.blocked_by.map((dep) => (
                         <button
-                          key={depId}
+                          key={dep.id}
                           type="button"
-                          onClick={() => onNavigateTask?.(depId)}
+                          onClick={() => onNavigateTask?.(dep.id)}
                           className="px-2 py-0.5 rounded font-mono text-xs border border-[var(--border)] bg-[var(--muted)] hover:bg-[var(--accent)] text-[var(--foreground)] cursor-pointer"
                         >
-                          {depId}
+                          {dep.id}
                         </button>
                       ))}
                     </div>
