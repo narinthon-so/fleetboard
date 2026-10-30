@@ -157,6 +157,77 @@ pub struct Evidence {
     pub reachable: bool,
 }
 
+/// Compact diffstat formatting: " 4 files changed, 133 insertions(+)" -> "4 files changed, +133".
+pub fn compact_diffstat(raw: &str) -> String {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return String::new();
+    }
+    let parts: Vec<&str> = raw.split(',').map(|s| s.trim()).collect();
+    if parts.is_empty() {
+        return String::new();
+    }
+    let files_part = parts[0];
+    let mut out_parts = Vec::new();
+    out_parts.push(files_part.to_string());
+
+    let mut recognized = true;
+    for part in &parts[1..] {
+        if part.contains("insertion") {
+            let digits: String = part.chars().filter(|c| c.is_ascii_digit()).collect();
+            if !digits.is_empty() {
+                out_parts.push(format!("+{digits}"));
+            } else {
+                recognized = false;
+            }
+        } else if part.contains("deletion") {
+            let digits: String = part.chars().filter(|c| c.is_ascii_digit()).collect();
+            if !digits.is_empty() {
+                out_parts.push(format!("-{digits}"));
+            } else {
+                recognized = false;
+            }
+        } else {
+            recognized = false;
+        }
+    }
+    if !recognized {
+        return raw.to_string();
+    }
+
+    out_parts.join(", ")
+}
+
+impl Evidence {
+    /// One-line evidence summary for `fb done`, e.g. "evidence: 1 commit, 4 files changed, +133, clean".
+    pub fn summary(&self) -> String {
+        let mut parts = Vec::new();
+        parts.push(if self.commits == 1 {
+            "1 commit".to_string()
+        } else {
+            format!("{} commits", self.commits)
+        });
+        if self.rebased {
+            parts.push("rebased".to_string());
+        }
+        if let Some(ds) = &self.diffstat {
+            let c = compact_diffstat(ds);
+            if !c.is_empty() {
+                parts.push(c);
+            }
+        }
+        parts.push(if self.dirty {
+            "dirty".to_string()
+        } else {
+            "clean".to_string()
+        });
+        if let Some(pr) = &self.pr {
+            parts.push(format!("PR #{} {}", pr.number, pr.state));
+        }
+        format!("evidence: {}", parts.join(", "))
+    }
+}
+
 /// DESIGN.md "Evidence" table. Missing cwd -> reachable=false, zeros.
 pub fn evidence(
     cwd: &Path,

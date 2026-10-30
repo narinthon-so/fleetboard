@@ -497,6 +497,10 @@ fn dispatch(s: &Session) -> Result<Out> {
             let mut text = format!("{} is now in review\n", fmt_id(id));
             if no_commits {
                 text.push_str("warning: claimed, no commits. Explain why in a handoff note.\n");
+            } else if let Some(ev) = &ev
+                && t.kind == Kind::Code
+            {
+                text.push_str(&format!("{}\n", ev.ev.summary()));
             }
             let mut out = task_out(s, &t, text)?;
             out.data["evidence"] = ev.as_ref().map_or(Value::Null, Ev::to_json);

@@ -87,7 +87,7 @@ expression: "snap(&e, &r)"
     ],
     "host": "<host>",
     "project": "github.com/Org/Repo",
-    "text": "fleetboard — you are <label> on host <host>, project github.com/Org/Repo\nYour claim: fb-1 \"Rate-limit public endpoints\" (review)\nLast handoff (<label>, just now):\n  Bucket done, tests next.\nWorkflow: fb show fb-1 · fb note fb-1 \"…\" (handoff before you stop) · fb done fb-1\nNo claim? fb ready, then fb claim <id>. New work you find: fb add \"…\" (lands as a draft).\n"
+    "text": "fleetboard — you are <label> on host <host>, project github.com/Org/Repo\nYour claim: fb-1 \"Rate-limit public endpoints\" (review)\nBranch: task/fb-1\nLast handoff (<label>, just now):\n  Bucket done, tests next.\nWorkflow: fb show fb-1 · fb note fb-1 \"…\" (handoff before you stop) · fb done fb-1\nNo claim? fb ready, then fb claim <id>. New work you find: fb add \"…\" (lands as a draft).\n"
   },
   "ok": true,
   "v": 1
