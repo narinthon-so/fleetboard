@@ -829,50 +829,7 @@ impl Backend for SqliteBackend {
                 })
             })
             .collect::<Result<Vec<_>>>()?;
-        let mut evt_stmt = self.conn.prepare(
-            "SELECT id, task_id, actor_id, type, data, pid, ppid, proc_chain, created_at \
-             FROM events WHERE task_id = ?1 ORDER BY id",
-        )?;
-        let raw_events = evt_stmt
-            .query_map([id], |r| {
-                Ok((
-                    r.get::<_, i64>(0)?,
-                    r.get::<_, Option<i64>>(1)?,
-                    r.get::<_, i64>(2)?,
-                    r.get::<_, String>(3)?,
-                    r.get::<_, Option<String>>(4)?,
-                    r.get::<_, u32>(5)?,
-                    r.get::<_, u32>(6)?,
-                    r.get::<_, String>(7)?,
-                    r.get::<_, String>(8)?,
-                ))
-            })?
-            .collect::<rusqlite::Result<Vec<_>>>()?;
-        let history = raw_events
-            .into_iter()
-            .map(|(eid, tid, aid, ty, data_raw, pid, ppid, chain, created)| {
-                let data_val: Option<Value> = data_raw
-                    .as_deref()
-                    .and_then(|d| serde_json::from_str(d).ok());
-                let on_behalf_of = data_val
-                    .as_ref()
-                    .and_then(|v| v.get("on_behalf_of"))
-                    .and_then(|v| v.as_str())
-                    .map(ToString::to_string);
-                Ok(EventRow {
-                    id: eid,
-                    task_id: tid,
-                    actor: load_actor(&self.conn, aid)?,
-                    ty,
-                    data: data_val,
-                    pid,
-                    ppid,
-                    proc_chain: chain,
-                    created_at: parse_ts(&created)?,
-                    on_behalf_of,
-                })
-            })
-            .collect::<Result<Vec<_>>>()?;
+        let history = self.task_events(id)?;
         Ok(TaskDetail {
             task,
             claims,
@@ -1275,6 +1232,140 @@ impl Backend for SqliteBackend {
             )
             .optional()?;
         raw.map(|(d, t)| Ok((d, parse_ts(&t)?))).transpose()
+    }
+
+    fn all_projects(&self) -> Result<Vec<Project>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, key, alias FROM projects ORDER BY id")?;
+        let rows = stmt.query_map([], |r| {
+            Ok(Project {
+                id: r.get(0)?,
+                key: r.get(1)?,
+                alias: r.get(2)?,
+            })
+        })?;
+        let mut out = Vec::new();
+        for r in rows {
+            out.push(r?);
+        }
+        Ok(out)
+    }
+
+    fn all_actors(&self) -> Result<Vec<Actor>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, kind, provider, external_id, label, trusted FROM actors ORDER BY id",
+        )?;
+        let rows = stmt.query_map([], |r| {
+            Ok(Actor {
+                id: r.get(0)?,
+                kind: r.get(1)?,
+                provider: r.get(2)?,
+                external_id: r.get(3)?,
+                label: r.get(4)?,
+                trusted: r.get::<_, i64>(5)? != 0,
+            })
+        })?;
+        let mut out = Vec::new();
+        for r in rows {
+            out.push(r?);
+        }
+        Ok(out)
+    }
+
+    fn all_instances(&self) -> Result<Vec<InstanceRow>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT DISTINCT c.host, c.cwd, c.branch, c.workspace_id, \
+             a.id, a.kind, a.provider, a.external_id, a.label, a.trusted, \
+             p.id, p.key, p.alias \
+             FROM claims c \
+             JOIN actors a ON a.id = c.actor_id \
+             JOIN tasks t ON t.id = c.task_id \
+             LEFT JOIN projects p ON p.id = t.project_id \
+             ORDER BY c.host, c.cwd, c.branch",
+        )?;
+        let rows = stmt.query_map([], |r| {
+            let p_id: Option<i64> = r.get(10)?;
+            let project = p_id.map(|id| Project {
+                id,
+                key: r.get(11).unwrap_or_default(),
+                alias: r.get(12).unwrap_or_default(),
+            });
+            Ok(InstanceRow {
+                host: r.get(0)?,
+                cwd: r.get(1)?,
+                branch: r.get(2)?,
+                workspace_id: r.get(3)?,
+                actor: Actor {
+                    id: r.get(4)?,
+                    kind: r.get(5)?,
+                    provider: r.get(6)?,
+                    external_id: r.get(7)?,
+                    label: r.get(8)?,
+                    trusted: r.get::<_, i64>(9)? != 0,
+                },
+                project,
+            })
+        })?;
+        let mut out = Vec::new();
+        for r in rows {
+            out.push(r?);
+        }
+        Ok(out)
+    }
+
+    fn task_events(&self, task_id: i64) -> Result<Vec<EventRow>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT e.id, e.task_id, e.type, e.data, e.pid, e.ppid, e.proc_chain, e.created_at, \
+             a.id, a.kind, a.provider, a.external_id, a.label, a.trusted \
+             FROM events e \
+             JOIN actors a ON a.id = e.actor_id \
+             WHERE e.task_id = ?1 \
+             ORDER BY e.id ASC",
+        )?;
+        let rows = stmt.query_map([task_id], |r| {
+            let raw_data: Option<String> = r.get(3)?;
+            let data = raw_data.and_then(|s| serde_json::from_str::<Value>(&s).ok());
+            let on_behalf_of = data
+                .as_ref()
+                .and_then(|v| v.get("on_behalf_of"))
+                .and_then(|v| v.as_str())
+                .map(ToString::to_string);
+            let created_at_str: String = r.get(7)?;
+            let created_at = DateTime::parse_from_rfc3339(&created_at_str)
+                .map(|d| d.with_timezone(&Utc))
+                .unwrap_or_else(|_| Utc::now());
+            Ok(EventRow {
+                id: r.get(0)?,
+                task_id: r.get(1)?,
+                event_type: r.get(2)?,
+                data,
+                pid: r.get::<_, i64>(4)? as u32,
+                ppid: r.get::<_, i64>(5)? as u32,
+                proc_chain: r.get(6)?,
+                created_at,
+                on_behalf_of,
+                actor: Actor {
+                    id: r.get(8)?,
+                    kind: r.get(9)?,
+                    provider: r.get(10)?,
+                    external_id: r.get(11)?,
+                    label: r.get(12)?,
+                    trusted: r.get::<_, i64>(13)? != 0,
+                },
+            })
+        })?;
+        let mut out = Vec::new();
+        for r in rows {
+            out.push(r?);
+        }
+        Ok(out)
+    }
+
+    fn data_version(&self) -> Result<i64> {
+        self.conn
+            .query_row("PRAGMA data_version", [], |r| r.get(0))
+            .map_err(Into::into)
     }
 }
 

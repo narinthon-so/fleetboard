@@ -67,4 +67,10 @@ pub trait Backend {
 
     fn save_snapshot(&self, claim_id: i64, json: &str, now: DateTime<Utc>) -> Result<()>;
     fn snapshot(&self, claim_id: i64) -> Result<Option<(String, DateTime<Utc>)>>;
+
+    fn all_projects(&self) -> Result<Vec<Project>>;
+    fn all_actors(&self) -> Result<Vec<Actor>>;
+    fn all_instances(&self) -> Result<Vec<InstanceRow>>;
+    fn task_events(&self, task_id: i64) -> Result<Vec<EventRow>>;
+    fn data_version(&self) -> Result<i64>;
 }
