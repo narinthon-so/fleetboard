@@ -106,11 +106,17 @@ fn live_evidence(db: &SqliteBackend, host: &str, gh: bool, c: &ClaimRow, now: Da
 }
 
 fn claim_is_stale(
+    adapter: &dyn crate::adapters::RuntimeAdapter,
     c: &ClaimRow,
     host: &str,
     now: DateTime<Utc>,
     stale_after: chrono::Duration,
 ) -> bool {
+    if let Some(status) = adapter.agent_status(&c.actor.external_id)
+        && status == crate::adapters::AgentRuntimeStatus::Gone
+    {
+        return true;
+    }
     let last_commit = if c.host == host {
         c.branch
             .as_deref()
@@ -122,6 +128,7 @@ fn claim_is_stale(
 }
 
 fn derive_for(
+    adapter: &dyn crate::adapters::RuntimeAdapter,
     db: &SqliteBackend,
     host: &str,
     gh: bool,
@@ -138,6 +145,11 @@ fn derive_for(
     } else {
         None
     };
+    let pending_permissions = t
+        .claim
+        .as_ref()
+        .map_or(0, |c| adapter.pending_permissions(&c.actor.external_id));
+
     model::derive(&Facts {
         status: t.status,
         kind: t.kind,
@@ -148,8 +160,9 @@ fn derive_for(
         claim_stale: t.status == Status::InProgress
             && t.claim
                 .as_ref()
-                .is_some_and(|c| claim_is_stale(c, host, now, stale_after)),
+                .is_some_and(|c| claim_is_stale(adapter, c, host, now, stale_after)),
         commits,
+        pending_permissions,
     })
 }
 
@@ -177,7 +190,12 @@ fn claim_json(c: &ClaimRow) -> Value {
     })
 }
 
-fn task_json(t: &TaskRow, d: &Derived, ev: Option<&Ev>) -> Value {
+fn task_json(
+    adapter: &dyn crate::adapters::RuntimeAdapter,
+    t: &TaskRow,
+    d: &Derived,
+    ev: Option<&Ev>,
+) -> Value {
     let mut val = json!({
         "id": fmt_id(t.id),
         "title": t.title,
@@ -208,6 +226,27 @@ fn task_json(t: &TaskRow, d: &Derived, ev: Option<&Ev>) -> Value {
         "updated_at": ts(t.updated_at),
     });
     val["evidence"] = ev.map_or(Value::Null, |e| e.to_json());
+
+    if let Some(c) = &t.claim {
+        if let Some(st) = adapter.agent_status(&c.actor.external_id) {
+            let perms = adapter.pending_permissions(&c.actor.external_id);
+            val["runtime"] = json!({
+                "status": st.as_str(),
+                "pending_permissions": perms,
+            });
+            val["runtime_status"] = json!(st.as_str());
+            val["pending_permissions"] = json!(perms);
+        } else {
+            val["runtime"] = Value::Null;
+            val["runtime_status"] = Value::Null;
+            val["pending_permissions"] = Value::Null;
+        }
+    } else {
+        val["runtime"] = Value::Null;
+        val["runtime_status"] = Value::Null;
+        val["pending_permissions"] = Value::Null;
+    }
+
     val
 }
 
@@ -232,9 +271,17 @@ pub async fn board_handler(State(state): State<Arc<AppState>>) -> Response {
 
     let mut task_values = Vec::new();
     for t in &tasks {
-        let d = derive_for(&db, &state.host, cfg.gh, now, cfg.stale_after, t);
+        let d = derive_for(
+            state.adapter.as_ref(),
+            &db,
+            &state.host,
+            cfg.gh,
+            now,
+            cfg.stale_after,
+            t,
+        );
         let ev = latest_claim(&db, t).map(|c| live_evidence(&db, &state.host, cfg.gh, &c, now));
-        task_values.push(task_json(t, &d, ev.as_ref()));
+        task_values.push(task_json(state.adapter.as_ref(), t, &d, ev.as_ref()));
     }
 
     let projects = match db.all_projects() {
@@ -350,13 +397,21 @@ pub async fn task_detail_handler(
 
     let cfg = crate::config::load(&state.config.home).unwrap_or_default();
     let now = Utc::now();
-    let derived = derive_for(&db, &state.host, cfg.gh, now, cfg.stale_after, &detail.task);
+    let derived = derive_for(
+        state.adapter.as_ref(),
+        &db,
+        &state.host,
+        cfg.gh,
+        now,
+        cfg.stale_after,
+        &detail.task,
+    );
     let ev = detail
         .claims
         .first()
         .map(|c| live_evidence(&db, &state.host, cfg.gh, c, now));
 
-    let mut j = task_json(&detail.task, &derived, ev.as_ref());
+    let mut j = task_json(state.adapter.as_ref(), &detail.task, &derived, ev.as_ref());
     j["claims"] = json!(detail.claims.iter().map(claim_json).collect::<Vec<_>>());
     j["notes"] = json!(
         detail
@@ -450,9 +505,17 @@ fn parse_task_id(s: &str) -> Result<i64, FbError> {
 fn task_success_response(state: &AppState, db: &SqliteBackend, task: &TaskRow) -> Response {
     let cfg = crate::config::load(&state.config.home).unwrap_or_default();
     let now = Utc::now();
-    let derived = derive_for(db, &state.host, cfg.gh, now, cfg.stale_after, task);
+    let derived = derive_for(
+        state.adapter.as_ref(),
+        db,
+        &state.host,
+        cfg.gh,
+        now,
+        cfg.stale_after,
+        task,
+    );
     let ev = latest_claim(db, task).map(|c| live_evidence(db, &state.host, cfg.gh, &c, now));
-    let t_json = task_json(task, &derived, ev.as_ref());
+    let t_json = task_json(state.adapter.as_ref(), task, &derived, ev.as_ref());
     (
         StatusCode::OK,
         axum::Json(json!({
@@ -665,6 +728,7 @@ pub async fn steal_handler(
             head: None,
         },
         scope_project: None,
+        workspace_id: None,
     };
     match db.claim(&actor, &req, &ctx) {
         Ok(task) => task_success_response(&state, &db, &task),

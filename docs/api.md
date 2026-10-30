@@ -1,4 +1,4 @@
-# fleetboard — HTTP API (M1)
+# fleetboard — HTTP API (M1–M2)
 
 Status: draft (2026-10-30). Implemented by `fb serve`.
 
@@ -214,6 +214,12 @@ Cookie: fb_session=...
           "no_evidence": false,
           "needs_me": false
         },
+        "runtime": {
+          "status": "running",
+          "pending_permissions": 0
+        },
+        "runtime_status": "running",
+        "pending_permissions": 0,
         "evidence": {
           "commits": 3,
           "computed_at": "2026-10-30T10:35:00Z",
@@ -773,3 +779,44 @@ Content-Type: application/json
 **Errors:**
 - `400 Bad Request` (`USAGE`): Empty body or invalid `kind`.
 - `404 Not Found` (`NOT_FOUND`): Task does not exist.
+
+---
+
+## Runtime Adapters (M2)
+
+`fb serve` integrates with live agent orchestrators via the `RuntimeAdapter` trait. The adapter is configured in `$FB_HOME/config.toml`:
+
+```toml
+adapter = "paseo"   # "none" (default) | "paseo"
+```
+
+### Supported Adapters
+
+| Adapter | Description |
+|---|---|
+| `none` | Default self-report mode. No background orchestrator queries. `runtime` is `null` and staleness is based purely on elapsed time (`stale_after`). |
+| `paseo` | Paseo orchestrator integration. Shells out to `paseo workspace ls --json`, `paseo ls --json`, and `paseo inspect <id> --json`. Caches responses in memory for ~5 s. Joins agents to workspaces by longest-prefix match on working directory. |
+
+### Runtime Statuses
+
+Tasks with an active claim expose live orchestrator state under `runtime` (as well as `runtime_status` and `pending_permissions`):
+
+| Status | Meaning |
+|---|---|
+| `running` | Agent is actively executing. |
+| `idle` | Agent session is active but waiting for prompt or user input. |
+| `permission` | Agent has one or more pending tool or execution permissions requiring operator approval. |
+| `gone` | Agent is archived, closed, or missing from the orchestrator. |
+
+### Derived State & Needs-Me Lane Integration
+
+- **Pending Permissions:** When an adapter reports `pending_permissions > 0` (or status `permission`), `derived.needs_me` is automatically set to `true`, bringing the task into the Needs-me lane.
+- **Runtime-Aware Stale (D5):** When an adapter reports `gone` for an agent on an `in_progress` task, `derived.stale` and `derived.needs_me` are immediately set to `true` (within one poll).
+
+### Graceful Degradation
+
+If the orchestrator binary (e.g. `paseo`) is missing from `PATH` or encounters an execution or JSON parse error:
+- A warning is emitted to `stderr` once: `warning: paseo binary not found; degrading to none adapter`
+- `fb serve` and CLI commands gracefully degrade to `none` adapter behavior
+- Requests and commands **never fail** due to adapter issues
+
