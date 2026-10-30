@@ -200,7 +200,10 @@ fn done_without_commits_goes_to_review_flagged_and_verify_needs_force() {
 
 #[test]
 fn dirty_worktree_and_rebase_fallback() {
+    use chrono::{Duration, Utc};
     let e = Env::new();
+    let t0 = Utc::now();
+    e.set_now(t0);
     e.ok(H, &["add", "Rewrite"]);
     e.ok(A, &["claim", "fb-1"]);
     e.write("scratch.txt", "uncommitted\n");
@@ -209,7 +212,8 @@ fn dirty_worktree_and_rebase_fallback() {
     std::fs::remove_file(e.work_path.join("scratch.txt")).unwrap();
 
     // Replace the history so the claim's base commit is no longer an ancestor.
-    std::thread::sleep(std::time::Duration::from_millis(1100));
+    let t1 = t0 + Duration::seconds(10);
+    e.set_now(t1);
     e.git(&["checkout", "-q", "--orphan", "rewritten"]);
     e.write("new.txt", "fresh\n");
     e.commit("rewritten root");
