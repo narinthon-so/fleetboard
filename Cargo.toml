@@ -20,6 +20,7 @@ tokio-stream = { version = "0.1.19", features = ["sync"] }
 toml = "1.1.8"
 rust-embed = "8.5"
 mime_guess = "2.0"
+rmcp = { version = "3.8.0", features = ["server", "transport-io"] }
 
 [dev-dependencies]
 assert_cmd = "2.2.2"
