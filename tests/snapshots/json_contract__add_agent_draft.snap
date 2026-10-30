@@ -1,0 +1,55 @@
+---
+source: tests/json_contract.rs
+expression: "snap(&e, &r)"
+---
+{
+  "data": {
+    "task": {
+      "acceptance": "- [ ] 429 after 100 req/min",
+      "blocked_by": [],
+      "claim": null,
+      "created_at": "<ts>",
+      "created_by": {
+        "external_id": "agent-aaaaaaa",
+        "id": 2,
+        "kind": "agent",
+        "label": "<label>",
+        "provider": "codex",
+        "trusted": false
+      },
+      "derived": {
+        "blocked": false,
+        "needs_me": true,
+        "no_evidence": false,
+        "orphaned": false,
+        "plan_pending": false,
+        "ready": false,
+        "stale": false
+      },
+      "goal": "Protect the API",
+      "id": "fb-1",
+      "kind": "code",
+      "needs_plan_approval": false,
+      "plan": null,
+      "plan_approved_at": null,
+      "priority": 1,
+      "project": {
+        "alias": null,
+        "key": "github.com/Org/Repo",
+        "name": "Repo"
+      },
+      "result": null,
+      "status": "draft",
+      "ticket": {
+        "key": "ABC-36",
+        "system": "jira",
+        "title": "Hardening",
+        "url": null
+      },
+      "title": "Rate-limit public endpoints",
+      "updated_at": "<ts>"
+    }
+  },
+  "ok": true,
+  "v": 1
+}

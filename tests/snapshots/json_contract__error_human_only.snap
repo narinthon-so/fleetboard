@@ -1,0 +1,12 @@
+---
+source: tests/json_contract.rs
+expression: "snap(&e, &r)"
+---
+{
+  "error": {
+    "code": "HUMAN_ONLY",
+    "message": "promote is human-only (run it with --as-human from a shell with no agent markers)"
+  },
+  "ok": false,
+  "v": 1
+}

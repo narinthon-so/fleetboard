@@ -1,0 +1,22 @@
+---
+source: tests/json_contract.rs
+expression: "snap(&e, &r)"
+---
+{
+  "data": {
+    "actor": {
+      "external_id": "agent-bbbbbbb",
+      "id": 3,
+      "kind": "agent",
+      "label": "<label>",
+      "provider": "codex",
+      "trusted": false
+    },
+    "claims": [],
+    "host": "<host>",
+    "project": "github.com/Org/Repo",
+    "text": "fleetboard — you are <label> on host <host>, project github.com/Org/Repo\nYou have no active claim.\nNo claim? fb ready, then fb claim <id>. New work you find: fb add \"…\" (lands as a draft).\n"
+  },
+  "ok": true,
+  "v": 1
+}
