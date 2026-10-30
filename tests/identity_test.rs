@@ -15,16 +15,25 @@ fn mock_env(vars: &[(&str, &str)]) -> impl Fn(&str) -> Option<String> {
 
 #[test]
 fn test_identity_rule1_paseo_variants() {
-    // With AI_AGENT
+    // With AI_AGENT (gemini normalizes to antigravity)
     let env = mock_env(&[
         ("PASEO_AGENT_ID", "1111111-2222-3333"),
         ("AI_AGENT", "gemini"),
     ]);
     let caller = resolve_agent(&env, &[], "testhost", Path::new("/cwd"));
     assert_eq!(caller.kind, ActorKind::Agent);
-    assert_eq!(caller.provider.as_deref(), Some("gemini"));
+    assert_eq!(caller.provider.as_deref(), Some("antigravity"));
     assert_eq!(caller.external_id, "1111111-2222-3333");
-    assert_eq!(caller.label, "gemini 1111111");
+    assert_eq!(caller.label, "antigravity 1111111");
+
+    // With ClaudeCode agent (claude-code_2-1-310_agent normalizes to claude)
+    let env = mock_env(&[
+        ("PASEO_AGENT_ID", "855f6f3a-1234-5678"),
+        ("AI_AGENT", "claude-code_2-1-310_agent"),
+    ]);
+    let caller = resolve_agent(&env, &[], "testhost", Path::new("/cwd"));
+    assert_eq!(caller.provider.as_deref(), Some("claude"));
+    assert_eq!(caller.label, "claude 855f6f3");
 
     // With ClaudeCode env
     let env = mock_env(&[("PASEO_AGENT_ID", "abcdef0-1234"), ("CLAUDECODE", "1")]);
@@ -64,8 +73,14 @@ fn test_identity_rule2_claudecode() {
 
 #[test]
 fn test_identity_rule3_all_known_binaries() {
-    let binaries = ["claude", "codex", "agy", "antigravity", "gemini"];
-    for bin in binaries {
+    let binaries = [
+        ("claude", "claude"),
+        ("codex", "codex"),
+        ("agy", "antigravity"),
+        ("antigravity", "antigravity"),
+        ("gemini", "antigravity"),
+    ];
+    for (bin, expected_prov) in binaries {
         let env = mock_env(&[]);
         let chain = vec![ProcInfo {
             pid: 4321,
@@ -73,10 +88,25 @@ fn test_identity_rule3_all_known_binaries() {
         }];
         let caller = resolve_agent(&env, &chain, "host_x", Path::new("/path"));
         assert_eq!(caller.kind, ActorKind::Agent);
-        assert_eq!(caller.provider.as_deref(), Some(bin));
-        assert_eq!(caller.external_id, format!("proc:host_x:{bin}:4321"));
-        assert_eq!(caller.label, format!("{bin} 4321"));
+        assert_eq!(caller.provider.as_deref(), Some(expected_prov));
+        assert_eq!(
+            caller.external_id,
+            format!("proc:host_x:{expected_prov}:4321")
+        );
+        assert_eq!(caller.label, format!("{expected_prov} 4321"));
     }
+}
+
+#[test]
+fn test_identity_non_ascii_id_safe() {
+    let env = mock_env(&[
+        ("PASEO_AGENT_ID", "🦀agent-non-ascii"),
+        ("AI_AGENT", "claude"),
+    ]);
+    let caller = resolve_agent(&env, &[], "testhost", Path::new("/cwd"));
+    assert_eq!(caller.kind, ActorKind::Agent);
+    // Takes exactly 7 characters
+    assert_eq!(caller.label, "claude 🦀agent-");
 }
 
 #[test]

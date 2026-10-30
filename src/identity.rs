@@ -31,6 +31,29 @@ pub enum IdentityError {
 /// Known agent binary names recognized in process ancestry.
 const KNOWN_AGENT_BINARIES: &[&str] = &["claude", "codex", "agy", "antigravity", "gemini"];
 
+/// Normalise an agent provider name to one of `claude | codex | antigravity | unknown`.
+///
+/// Mapping rules (case-insensitive, by prefix or contains):
+/// - `claude*` or contains `claude` -> `claude`
+/// - `codex*` or contains `codex` -> `codex`
+/// - `agy*`, `antigravity*`, `gemini*` or contains `agy`, `antigravity`, `gemini` -> `antigravity`
+/// - else -> `unknown`
+pub fn normalize_provider(raw: &str) -> &'static str {
+    let s = raw.trim().to_ascii_lowercase();
+    if s.is_empty() {
+        return "unknown";
+    }
+    if s.contains("claude") {
+        "claude"
+    } else if s.contains("codex") {
+        "codex"
+    } else if s.contains("antigravity") || s.contains("gemini") || s.contains("agy") {
+        "antigravity"
+    } else {
+        "unknown"
+    }
+}
+
 /// Match a process name against known agent binaries.
 /// Handles paths (e.g. `/usr/bin/claude`), casing, and optional `.exe` extension.
 fn match_known_binary(name: &str) -> Option<&'static str> {
@@ -41,10 +64,25 @@ fn match_known_binary(name: &str) -> Option<&'static str> {
         .unwrap_or(&lower);
     let base = base.strip_suffix(".exe").unwrap_or(base);
 
-    KNOWN_AGENT_BINARIES
-        .iter()
-        .copied()
-        .find(|&known| base == known)
+    for &known in KNOWN_AGENT_BINARIES {
+        if base == known {
+            return Some(known);
+        }
+    }
+
+    if base.contains("claude") {
+        Some("claude")
+    } else if base.contains("codex") {
+        Some("codex")
+    } else if base.contains("antigravity") {
+        Some("antigravity")
+    } else if base.contains("gemini") {
+        Some("gemini")
+    } else if base.contains("agy") {
+        Some("agy")
+    } else {
+        None
+    }
 }
 
 /// DESIGN.md "Identity" rules 1-4. Never returns Human.
@@ -59,16 +97,16 @@ pub fn resolve_agent(
     if let Some(paseo_id) = env("PASEO_AGENT_ID").filter(|s| !s.trim().is_empty()) {
         let external_id = paseo_id.trim().to_string();
         let provider = if let Some(ai_agent) = env("AI_AGENT").filter(|s| !s.trim().is_empty()) {
-            ai_agent.trim().to_ascii_lowercase()
+            normalize_provider(&ai_agent).to_string()
         } else if env("CLAUDECODE").is_some() || env("CLAUDE_CODE_SESSION_ID").is_some() {
             "claude".to_string()
         } else if let Some((_, known)) = find_known_agent_in_chain(chain) {
-            known.to_string()
+            normalize_provider(known).to_string()
         } else {
             "unknown".to_string()
         };
 
-        let short_id = &external_id[..external_id.len().min(7)];
+        let short_id: String = external_id.chars().take(7).collect();
         let label = format!("{provider} {short_id}");
 
         return Caller {
@@ -81,24 +119,30 @@ pub fn resolve_agent(
 
     // 2. Provider variables -> agent:
     // Claude Code: CLAUDECODE=1, external_id = CLAUDE_CODE_SESSION_ID.
+    let ai_agent = env("AI_AGENT").filter(|s| !s.trim().is_empty());
     let is_claudecode = env("CLAUDECODE").is_some() || env("CLAUDE_CODE_SESSION_ID").is_some();
-    if is_claudecode {
-        let provider = "claude".to_string();
+    if is_claudecode || ai_agent.is_some() {
+        let provider = if let Some(ref raw_agent) = ai_agent {
+            normalize_provider(raw_agent).to_string()
+        } else {
+            "claude".to_string()
+        };
         let (external_id, label) = if let Some(session_id) =
             env("CLAUDE_CODE_SESSION_ID").filter(|s| !s.trim().is_empty())
         {
             let sid = session_id.trim().to_string();
-            let label = format!("claude {}", &sid[..sid.len().min(7)]);
+            let short_sid: String = sid.chars().take(7).collect();
+            let label = format!("{provider} {short_sid}");
             (sid, label)
         } else if let Some((proc, _)) = find_known_agent_in_chain(chain) {
             (
-                format!("proc:{host}:claude:{}", proc.pid),
-                format!("claude {}", proc.pid),
+                format!("proc:{host}:{provider}:{}", proc.pid),
+                format!("{provider} {}", proc.pid),
             )
         } else {
             (
                 format!("anon:{host}:{}", cwd.display()),
-                format!("claude {host}"),
+                format!("{provider} {host}"),
             )
         };
 
@@ -113,7 +157,7 @@ pub fn resolve_agent(
     // 3. Process ancestry contains a known agent binary (claude, codex, agy, ...) -> agent,
     // provider from the binary, external_id = proc:<host>:<provider>:<pid of that agent process>.
     if let Some((proc, known)) = find_known_agent_in_chain(chain) {
-        let provider = known.to_string();
+        let provider = normalize_provider(known).to_string();
         let external_id = format!("proc:{host}:{provider}:{}", proc.pid);
         let label = format!("{provider} {}", proc.pid);
 
@@ -308,12 +352,14 @@ mod tests {
     use super::*;
     use std::collections::HashMap;
 
-    fn make_env(vars: &[(&str, &str)]) -> impl Fn(&str) -> Option<String> {
+    type EnvFn = Box<dyn Fn(&str) -> Option<String>>;
+
+    fn make_env(vars: &[(&str, &str)]) -> EnvFn {
         let map: HashMap<String, String> = vars
             .iter()
             .map(|(k, v)| (k.to_string(), v.to_string()))
             .collect();
-        move |key: &str| map.get(key).cloned()
+        Box::new(move |key: &str| map.get(key).cloned())
     }
 
     #[test]
@@ -335,6 +381,45 @@ mod tests {
     }
 
     #[test]
+    fn test_normalize_provider_table() {
+        let cases = [
+            ("claude-code_2-1-310_agent", "claude"),
+            ("claude", "claude"),
+            ("claude-code", "claude"),
+            ("claude_agent", "claude"),
+            ("CLAUDE", "claude"),
+            ("Claude-3", "claude"),
+            ("codex", "codex"),
+            ("codex-cli", "codex"),
+            ("codex_agent", "codex"),
+            ("CODEX", "codex"),
+            ("agy", "antigravity"),
+            ("AGY", "antigravity"),
+            ("agy_agent", "antigravity"),
+            ("antigravity", "antigravity"),
+            ("antigravity-cli", "antigravity"),
+            ("ANTIGRAVITY", "antigravity"),
+            ("gemini", "antigravity"),
+            ("gemini-1.5-pro", "antigravity"),
+            ("gemini_agent", "antigravity"),
+            ("GEMINI", "antigravity"),
+            ("unknown", "unknown"),
+            ("something_else", "unknown"),
+            ("gpt-4", "unknown"),
+            ("", "unknown"),
+            ("   ", "unknown"),
+        ];
+
+        for (input, expected) in cases {
+            assert_eq!(
+                normalize_provider(input),
+                expected,
+                "failed for input: {input:?}"
+            );
+        }
+    }
+
+    #[test]
     fn test_rule1_paseo_fallback_to_chain() {
         let env = make_env(&[("PASEO_AGENT_ID", "403254b1-2345")]);
         let chain = vec![
@@ -350,9 +435,9 @@ mod tests {
         let caller = resolve_agent(&env, &chain, "myhost", Path::new("/workspace"));
 
         assert_eq!(caller.kind, ActorKind::Agent);
-        assert_eq!(caller.provider.as_deref(), Some("agy"));
+        assert_eq!(caller.provider.as_deref(), Some("antigravity"));
         assert_eq!(caller.external_id, "403254b1-2345");
-        assert_eq!(caller.label, "agy 403254b");
+        assert_eq!(caller.label, "antigravity 403254b");
     }
 
     #[test]
@@ -390,10 +475,10 @@ mod tests {
         for (bin_name, expected_prov) in [
             ("claude", "claude"),
             ("codex", "codex"),
-            ("agy", "agy"),
+            ("agy", "antigravity"),
             ("antigravity", "antigravity"),
-            ("gemini", "gemini"),
-            ("/usr/local/bin/agy", "agy"),
+            ("gemini", "antigravity"),
+            ("/usr/local/bin/agy", "antigravity"),
         ] {
             let env = make_env(&[]);
             let chain = vec![
@@ -485,6 +570,61 @@ mod tests {
             let err = resolve_human(&env, &chain).unwrap_err();
             assert_eq!(err, IdentityError::AgentMarkers((*bin).to_string()));
         }
+    }
+
+    #[test]
+    fn test_rule1_paseo_ai_agent_normalization_table() {
+        let cases = [
+            ("claude-code_2-1-310_agent", "claude", "claude 855f6f3"),
+            ("codex", "codex", "codex 855f6f3"),
+            ("agy", "antigravity", "antigravity 855f6f3"),
+            ("antigravity", "antigravity", "antigravity 855f6f3"),
+            ("gemini", "antigravity", "antigravity 855f6f3"),
+            ("gemini-1.5-pro", "antigravity", "antigravity 855f6f3"),
+            ("unknown_provider", "unknown", "unknown 855f6f3"),
+        ];
+
+        for (ai_agent, expected_prov, expected_label) in cases {
+            let env = make_env(&[
+                ("PASEO_AGENT_ID", "855f6f3a-bbfa-4445-ae66-5b271d1bffb3"),
+                ("AI_AGENT", ai_agent),
+            ]);
+            let chain = vec![];
+            let caller = resolve_agent(&env, &chain, "myhost", Path::new("/workspace"));
+            assert_eq!(
+                caller.provider.as_deref(),
+                Some(expected_prov),
+                "provider for AI_AGENT={ai_agent}"
+            );
+            assert_eq!(
+                caller.label, expected_label,
+                "label for AI_AGENT={ai_agent}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_non_ascii_id_no_panic() {
+        // Multi-byte emoji where byte index 7 would split a char:
+        // "hello!🦀123": "hello!" is 6 bytes; '🦀' is 4 bytes (bytes 6..10).
+        // Slicing at byte 7 panics with byte slicing.
+        let env = make_env(&[("PASEO_AGENT_ID", "hello!🦀123"), ("AI_AGENT", "claude")]);
+        let caller = resolve_agent(&env, &[], "myhost", Path::new("/workspace"));
+        assert_eq!(caller.label, "claude hello!🦀");
+
+        // Japanese characters: 3 bytes each.
+        // "日本語ID123": '日'=3 bytes, '本'=3 bytes, '語'=3 bytes. Byte 7 is inside '語'.
+        let env = make_env(&[("PASEO_AGENT_ID", "日本語ID123"), ("AI_AGENT", "codex")]);
+        let caller = resolve_agent(&env, &[], "myhost", Path::new("/workspace"));
+        assert_eq!(caller.label, "codex 日本語ID12");
+
+        // Non-ASCII in CLAUDE_CODE_SESSION_ID
+        let env = make_env(&[
+            ("CLAUDECODE", "1"),
+            ("CLAUDE_CODE_SESSION_ID", "hello!🦀123"),
+        ]);
+        let caller = resolve_agent(&env, &[], "myhost", Path::new("/workspace"));
+        assert_eq!(caller.label, "claude hello!🦀");
     }
 
     #[test]
