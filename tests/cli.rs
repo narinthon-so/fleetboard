@@ -1076,3 +1076,23 @@ fn commands_accepting_freeform_text_allow_leading_hyphens() {
     let show2 = e.ok(H, &["show", "fb-1"]);
     assert_eq!(show2["task"]["project"]["alias"], "-my-alias");
 }
+
+#[test]
+fn serve_subcommand_help_description_is_not_duplicated() {
+    let e = Env::new();
+    let r = e.text(H, &["--help"]);
+    assert_eq!(r.code, 0);
+    assert!(
+        !r.stdout.contains(
+            "Start the loopback HTTP server and web UI Start the loopback HTTP server and web UI"
+        ),
+        "duplicated description found in --help: {}",
+        r.stdout
+    );
+    assert!(
+        r.stdout
+            .contains("serve       Start the loopback HTTP server and web UI\n"),
+        "expected single description in --help, got: {}",
+        r.stdout
+    );
+}

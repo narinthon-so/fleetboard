@@ -192,7 +192,6 @@ pub enum Cmd {
         cmd: ProjectCmd,
     },
     /// Start the loopback HTTP server and web UI
-    /// Start the loopback HTTP server and web UI
     Serve {
         /// Port to listen on (default: 7878)
         #[arg(long, default_value_t = 7878)]
