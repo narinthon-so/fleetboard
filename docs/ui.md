@@ -58,7 +58,7 @@ Priority: `P0` red-400 text, `P1` amber-400, `P2` default, `P3` muted. Shown as 
 - **Top bar:** filters are shadcn `Combobox` controls; the selection is kept in the URL query (`?project=…&agent=…`) so a view can be bookmarked. The `● live` dot shows SSE state (see States).
 - **Needs-me strip:** a horizontal row of compact chips under the top bar, always visible and ignoring the column filters. Each chip shows the id plus the reason; clicking it opens the card. It stays as one row and scrolls sideways; with zero items it shows "Nothing needs you" in muted text.
 - **Columns:** Draft · Ready · Blocked · In progress · Review · Done (D6). Done is collapsed to a narrow column by default. Dropped tasks are hidden unless the filter "show dropped" is on.
-- **Instance filter:** a two-level list, project → instances (`host · path tail · branch · agent`). Picking a project shows all its instances; picking an instance narrows to one checkout. This is the answer to "five checkouts of the same repo".
+- **Instance filter:** a two-level list, project → instances (`host · path tail · branch · agent`). Picking a project shows all its instances; picking an instance narrows to one checkout. This is how five checkouts of the same repo stay distinguishable.
 
 ## Card
 
