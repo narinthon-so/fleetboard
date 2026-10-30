@@ -42,11 +42,12 @@ pub struct Cli {
 pub enum Cmd {
     /// Create a task (agents: draft; human or trusted: todo)
     Add {
+        #[arg(allow_hyphen_values = true)]
         title: String,
-        #[arg(long)]
+        #[arg(long, allow_hyphen_values = true)]
         goal: Option<String>,
         /// Acceptance criterion (repeatable)
-        #[arg(long = "ac")]
+        #[arg(long = "ac", allow_hyphen_values = true)]
         ac: Vec<String>,
         /// code (default) or note
         #[arg(long, default_value = "code")]
@@ -59,7 +60,7 @@ pub enum Cmd {
         /// External parent as system:key, e.g. jira:ABC-36
         #[arg(long, value_name = "SYSTEM:KEY")]
         ticket: Option<String>,
-        #[arg(long = "ticket-title")]
+        #[arg(long = "ticket-title", allow_hyphen_values = true)]
         ticket_title: Option<String>,
         #[arg(long = "ticket-url")]
         ticket_url: Option<String>,
@@ -88,10 +89,15 @@ pub enum Cmd {
         for_actor: Option<String>,
     },
     /// Write or replace the plan ("-" reads stdin)
-    Plan { id: String, text: String },
+    Plan {
+        id: String,
+        #[arg(allow_hyphen_values = true)]
+        text: String,
+    },
     /// Add a note ("-" reads stdin)
     Note {
         id: String,
+        #[arg(allow_hyphen_values = true)]
         text: String,
         /// handoff | comment | finding
         #[arg(long, default_value = "handoff")]
@@ -100,7 +106,7 @@ pub enum Cmd {
     /// Finish: move to review
     Done {
         id: String,
-        #[arg(long)]
+        #[arg(long, allow_hyphen_values = true)]
         result: Option<String>,
     },
     /// Show a task in full
@@ -147,13 +153,17 @@ pub enum Cmd {
         force: bool,
     },
     /// (human) review -> in_progress with a comment
-    Reject { id: String, comment: String },
+    Reject {
+        id: String,
+        #[arg(allow_hyphen_values = true)]
+        comment: String,
+    },
     /// (human) release the active claim; task -> todo
     Release { id: String },
     /// (human) drop a task
     Drop {
         id: String,
-        #[arg(long)]
+        #[arg(long, allow_hyphen_values = true)]
         reason: Option<String>,
     },
     /// (human) reopen a done or dropped task
@@ -213,7 +223,11 @@ pub enum DepCmd {
 #[derive(Subcommand)]
 pub enum ProjectCmd {
     /// (human) rename a project for display
-    Alias { key: String, alias: String },
+    Alias {
+        key: String,
+        #[arg(allow_hyphen_values = true)]
+        alias: String,
+    },
 }
 
 /// What a command returns: the JSON `data` and the plain-text rendering.
@@ -796,7 +810,18 @@ pub fn dispatch(s: &Session, cmd: &Cmd) -> Result<Out> {
             };
             let acceptance = (!ac.is_empty()).then(|| {
                 ac.iter()
-                    .map(|a| format!("- [ ] {a}"))
+                    .map(|a| {
+                        let trimmed = a.trim();
+                        if let Some(rest) = trimmed.strip_prefix("- [ ] ") {
+                            format!("- [ ] {rest}")
+                        } else if let Some(rest) = trimmed.strip_prefix("- [x] ") {
+                            format!("- [x] {rest}")
+                        } else if let Some(rest) = trimmed.strip_prefix("- ") {
+                            format!("- [ ] {rest}")
+                        } else {
+                            format!("- [ ] {a}")
+                        }
+                    })
                     .collect::<Vec<_>>()
                     .join("\n")
             });
