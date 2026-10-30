@@ -241,7 +241,7 @@ On `add` and `claim`, `fb` reads git from the current directory:
 - `fb claim <id>` succeeds only if the task is Ready (or the caller is human / trusted with `--steal`). The unique index makes two simultaneous claims race-safe: the loser gets exit 3 `CLAIM_HELD`.
 - `fb claim` without an id claims the highest-priority Ready task in the current project (oldest first). This is the `bd ready --claim` pattern.
 - Claim records host, cwd, branch and `base_commit = git rev-parse HEAD`.
-- Every `fb` call by the claimant refreshes `cwd` and `branch` to the current values (an agent usually claims on `main`, then creates its feature branch) and updates `last_activity`. `base_commit` never changes.
+- Every `fb` call by the claimant updates `last_activity` for its active claims on the current host. Location (`cwd` and `branch`) refreshes only for tasks in `in_progress`; it freezes in `review` so evidence stays bound to the submitted work. If the claimant has a single `in_progress` claim on this host, it follows the current location (an agent usually claims on `main`, then creates its feature branch). With several `in_progress` claims on this host, only claims matching both the current `cwd` and `branch` refresh. `base_commit` never changes.
 - New commits on the claim's branch also count as activity for staleness: agents rarely call `fb` mid-task, and a busy agent committing every 30 minutes must not look stale.
 - **Stale** when either:
   - a runtime adapter reports the agent gone (M2), or

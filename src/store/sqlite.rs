@@ -532,18 +532,25 @@ impl Backend for SqliteBackend {
     fn touch(&self, actor: &Actor, loc: Option<&Location>, ctx: &Ctx) -> Result<()> {
         let host = loc.map(|l| l.host.clone()).unwrap_or_default();
         self.write(|tx| {
-            match loc {
-                Some(l) => tx.execute(
-                    "UPDATE claims SET last_activity = ?1, cwd = ?2, branch = COALESCE(?3, branch) \
-                     WHERE actor_id = ?4 AND released_at IS NULL AND host = ?5",
-                    params![ts(ctx.now), l.cwd, l.branch, actor.id, l.host],
-                )?,
-                None => tx.execute(
-                    "UPDATE claims SET last_activity = ?1 \
-                     WHERE actor_id = ?2 AND released_at IS NULL AND (?3 = '' OR host = ?3)",
-                    params![ts(ctx.now), actor.id, host],
-                )?,
-            };
+            tx.execute(
+                "UPDATE claims SET last_activity = ?1 \
+                 WHERE actor_id = ?2 AND released_at IS NULL AND (?3 = '' OR host = ?3)",
+                params![ts(ctx.now), actor.id, host],
+            )?;
+            if let Some(l) = loc {
+                // Review claims retain their evidence location. With several tasks in
+                // progress, the current location must identify the claim to refresh.
+                tx.execute(
+                    "UPDATE claims SET cwd = ?1, branch = COALESCE(?2, branch) \
+                     WHERE actor_id = ?3 AND released_at IS NULL AND host = ?4 \
+                     AND task_id IN (SELECT id FROM tasks WHERE status = 'in_progress') \
+                     AND ((cwd = ?1 AND branch IS ?2) OR 1 = ( \
+                         SELECT COUNT(*) FROM claims c JOIN tasks t ON t.id = c.task_id \
+                         WHERE c.actor_id = ?3 AND c.released_at IS NULL AND c.host = ?4 \
+                         AND t.status = 'in_progress'))",
+                    params![l.cwd, l.branch, actor.id, l.host],
+                )?;
+            }
             Ok(())
         })
     }
@@ -2024,6 +2031,52 @@ mod tests {
         assert_eq!(
             (c2.branch.as_deref(), c2.cwd.as_str()),
             (Some("main"), "/w")
+        );
+    }
+
+    #[test]
+    fn touch_with_multiple_in_progress_claims_only_moves_matching_location() {
+        let db = SqliteBackend::open_in_memory().unwrap();
+        let h = human(&db);
+        let a = agent(&db, "a1");
+        let mut ids = Vec::new();
+        for (title, cwd, branch) in [
+            ("A", "/w", "task/A"),
+            ("B", "/w", "task/B"),
+            ("C", "/other", "task/A"),
+        ] {
+            let task = db.add_task(&h, &new_task(title), &ctx()).unwrap();
+            let mut req = claim_req(Some(task.id));
+            req.loc.cwd = cwd.into();
+            req.loc.branch = Some(branch.into());
+            db.claim(&a, &req, &ctx()).unwrap();
+            ids.push(task.id);
+        }
+        let mut current = loc();
+        current.branch = Some("task/A".into());
+        let mut later = ctx();
+        later.now += chrono::Duration::minutes(1);
+        db.touch(&a, Some(&current), &later).unwrap();
+        for (id, cwd, branch) in [
+            (ids[0], "/w", "task/A"),
+            (ids[1], "/w", "task/B"),
+            (ids[2], "/other", "task/A"),
+        ] {
+            let claim = db.get_task(id).unwrap().claim.unwrap();
+            assert_eq!(claim.cwd, cwd);
+            assert_eq!(claim.branch.as_deref(), Some(branch));
+        }
+        // An unrecognised branch must not relocate any of the claims either.
+        current.branch = Some("unrelated".into());
+        db.touch(&a, Some(&current), &later).unwrap();
+        assert_eq!(
+            db.get_task(ids[0])
+                .unwrap()
+                .claim
+                .unwrap()
+                .branch
+                .as_deref(),
+            Some("task/A")
         );
     }
 
