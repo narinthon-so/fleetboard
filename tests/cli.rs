@@ -977,3 +977,102 @@ fn delegation_all_allowed_verbs() {
     assert!(event_types.contains(&"reopened".to_string()));
     assert!(event_types.contains(&"dropped".to_string()));
 }
+
+#[test]
+fn commands_accepting_freeform_text_allow_leading_hyphens() {
+    let e = Env::new();
+
+    // 1. add with title, --goal, --ac, and --ticket-title starting with hyphens
+    let d = e.ok(
+        H,
+        &[
+            "add",
+            "- Title starting with hyphen",
+            "--goal",
+            "- item in goal",
+            "--ac",
+            "- [ ] verify bullet 1",
+            "--ac",
+            "- [x] verify bullet 2",
+            "--ticket",
+            "jira:T-1",
+            "--ticket-title",
+            "- Jira ticket title",
+            "--kind",
+            "note",
+        ],
+    );
+    assert_eq!(d["task"]["title"], "- Title starting with hyphen");
+    assert_eq!(d["task"]["goal"], "- item in goal");
+    assert_eq!(
+        d["task"]["acceptance"],
+        "- [ ] verify bullet 1\n- [x] verify bullet 2"
+    );
+
+    // 2. plan with text starting with hyphen
+    e.ok(A, &["claim", "fb-1"]);
+    let d = e.ok(A, &["plan", "fb-1", "- step 1\n- step 2"]);
+    assert_eq!(d["task"]["plan"], "- step 1\n- step 2");
+
+    // 3. note with text starting with hyphen and --kind flag in both positions
+    e.ok(A, &["note", "fb-1", "- handoff note bullet"]);
+    e.ok(
+        A,
+        &["note", "fb-1", "- comment note bullet", "--kind", "comment"],
+    );
+    e.ok(
+        A,
+        &["note", "fb-1", "--kind", "finding", "- finding note bullet"],
+    );
+    let show = e.ok(H, &["show", "fb-1"]);
+    let notes = show["task"]["notes"].as_array().unwrap();
+    assert!(
+        notes
+            .iter()
+            .any(|n| n["body"] == "- handoff note bullet" && n["kind"] == "handoff")
+    );
+    assert!(
+        notes
+            .iter()
+            .any(|n| n["body"] == "- comment note bullet" && n["kind"] == "comment")
+    );
+    assert!(
+        notes
+            .iter()
+            .any(|n| n["body"] == "- finding note bullet" && n["kind"] == "finding")
+    );
+
+    // 4. done with --result starting with hyphen
+    let d = e.ok(A, &["done", "fb-1", "--result", "- result summary"]);
+    assert_eq!(d["task"]["status"], "review");
+
+    // 5. reject with comment starting with hyphen
+    let d = e.ok(H, &["reject", "fb-1", "- rejection comment"]);
+    assert_eq!(d["task"]["status"], "in_progress");
+
+    // 6. drop with --reason starting with hyphen
+    let d = e.ok(H, &["drop", "fb-1", "--reason", "- drop reason"]);
+    assert_eq!(d["task"]["status"], "dropped");
+
+    // 7. add with plain bullet in --ac
+    let d2 = e.ok(
+        H,
+        &[
+            "add",
+            "- Another task",
+            "--ac",
+            "- plain bullet item",
+            "--ac",
+            "normal item",
+        ],
+    );
+    assert_eq!(
+        d2["task"]["acceptance"],
+        "- [ ] plain bullet item\n- [ ] normal item"
+    );
+
+    // 8. project alias starting with hyphen
+    e.ok(H, &["project", "alias", "github.com/Org/Repo", "-my-alias"]);
+    let show2 = e.ok(H, &["show", "fb-1"]);
+    assert_eq!(show2["task"]["project"]["alias"], "-my-alias");
+}
