@@ -42,7 +42,8 @@ impl AppState {
         let _ = crate::store::SqliteBackend::open(&db_path)?;
 
         let cfg = crate::config::load(&config.home).unwrap_or_default();
-        let adapter = crate::adapters::make_adapter(&cfg.adapter);
+        let adapter =
+            crate::adapters::make_adapter(&cfg.adapter, Some(&config.home), Some(cfg.stale_after));
 
         let (tx_change, _) = broadcast::channel(64);
         let host = gethostname::gethostname().to_string_lossy().into_owned();

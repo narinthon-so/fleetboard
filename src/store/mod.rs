@@ -10,6 +10,7 @@ pub use sqlite::SqliteBackend;
 pub use types::*;
 
 use chrono::{DateTime, Utc};
+use serde_json::Value;
 
 use crate::identity::Caller;
 
@@ -73,4 +74,17 @@ pub trait Backend {
     fn all_instances(&self) -> Result<Vec<InstanceRow>>;
     fn task_events(&self, task_id: i64) -> Result<Vec<EventRow>>;
     fn data_version(&self) -> Result<i64>;
+
+    fn record_hook_event(
+        &self,
+        actor: &Actor,
+        event: &str,
+        data: Option<&Value>,
+        ctx: &Ctx,
+    ) -> Result<()>;
+    fn last_hook_event(&self, actor_id: i64) -> Result<Option<(String, DateTime<Utc>)>>;
+    fn last_hook_event_for_external_id(
+        &self,
+        external_id: &str,
+    ) -> Result<Option<(String, DateTime<Utc>)>>;
 }

@@ -1397,6 +1397,79 @@ impl Backend for SqliteBackend {
             .query_row("PRAGMA data_version", [], |r| r.get(0))
             .map_err(Into::into)
     }
+
+    fn record_hook_event(
+        &self,
+        actor: &Actor,
+        event: &str,
+        data: Option<&Value>,
+        ctx: &Ctx,
+    ) -> Result<()> {
+        let now = ts(ctx.now);
+        let data_str = data.map(|d| d.to_string());
+        self.write(|tx| {
+            tx.execute(
+                "INSERT INTO hook_events (actor_id, event, data, created_at) VALUES (?1, ?2, ?3, ?4)",
+                params![actor.id, event, data_str, now],
+            )?;
+            tx.execute(
+                "UPDATE actors SET last_seen = ?1 WHERE id = ?2",
+                params![now, actor.id],
+            )?;
+            Ok(())
+        })
+    }
+
+    fn last_hook_event(&self, actor_id: i64) -> Result<Option<(String, DateTime<Utc>)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT event, created_at FROM hook_events WHERE actor_id = ?1 ORDER BY id DESC LIMIT 1",
+        )?;
+        let res = stmt
+            .query_row([actor_id], |r| {
+                let ev: String = r.get(0)?;
+                let ts: String = r.get(1)?;
+                Ok((ev, ts))
+            })
+            .optional()?;
+        match res {
+            Some((ev, ts_str)) => {
+                let dt = DateTime::parse_from_rfc3339(&ts_str)
+                    .map_err(|e| FbError::Store(format!("bad timestamp in hook_events: {e}")))?
+                    .with_timezone(&Utc);
+                Ok(Some((ev, dt)))
+            }
+            None => Ok(None),
+        }
+    }
+
+    fn last_hook_event_for_external_id(
+        &self,
+        external_id: &str,
+    ) -> Result<Option<(String, DateTime<Utc>)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT h.event, h.created_at \
+             FROM hook_events h \
+             JOIN actors a ON a.id = h.actor_id \
+             WHERE a.external_id = ?1 OR CAST(a.id AS TEXT) = ?1 OR a.label = ?1 \
+             ORDER BY h.id DESC LIMIT 1",
+        )?;
+        let res = stmt
+            .query_row([external_id], |r| {
+                let ev: String = r.get(0)?;
+                let ts: String = r.get(1)?;
+                Ok((ev, ts))
+            })
+            .optional()?;
+        match res {
+            Some((ev, ts_str)) => {
+                let dt = DateTime::parse_from_rfc3339(&ts_str)
+                    .map_err(|e| FbError::Store(format!("bad timestamp in hook_events: {e}")))?
+                    .with_timezone(&Utc);
+                Ok(Some((ev, dt)))
+            }
+            None => Ok(None),
+        }
+    }
 }
 
 #[allow(clippy::too_many_arguments)]

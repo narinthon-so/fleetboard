@@ -1,12 +1,16 @@
 //! Runtime adapters (M2): link fleetboard to orchestrators (Paseo first).
 //! See DESIGN.md (Architecture/adapters) and IDEA.md (Orchestrator is optional).
 
+pub mod hooks;
 pub mod none;
 pub mod paseo;
 
+use chrono::Duration;
 use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+pub use self::hooks::{HookEvent, HookStdinPayload, HooksAdapter};
 pub use self::none::NoneAdapter;
 pub use self::paseo::{PaseoAdapter, find_matching_workspace, normalize_path};
 
@@ -66,10 +70,27 @@ pub trait RuntimeAdapter: Send + Sync {
     }
 }
 
-/// Construct a runtime adapter given the configured name.
-pub fn make_adapter(name: &str) -> Arc<dyn RuntimeAdapter> {
+/// Construct a runtime adapter given the configured name and optional home/stale_after.
+pub fn make_adapter(
+    name: &str,
+    home: Option<&Path>,
+    stale_after: Option<Duration>,
+) -> Arc<dyn RuntimeAdapter> {
     match name.trim().to_lowercase().as_str() {
         "paseo" => Arc::new(PaseoAdapter::new()),
+        "hooks" => {
+            let h = home.map(|p| p.to_path_buf()).unwrap_or_else(|| {
+                std::env::var("FB_HOME")
+                    .map(PathBuf::from)
+                    .unwrap_or_else(|_| {
+                        std::env::var("HOME")
+                            .map(|h| PathBuf::from(h).join(".fleetboard"))
+                            .unwrap_or_else(|_| PathBuf::from(".fleetboard"))
+                    })
+            });
+            let s = stale_after.unwrap_or_else(|| Duration::hours(2));
+            Arc::new(HooksAdapter::new(h, s))
+        }
         _ => Arc::new(NoneAdapter::new()),
     }
 }
