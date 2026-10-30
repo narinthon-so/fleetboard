@@ -387,6 +387,58 @@ async fn test_token_never_written_to_disk_and_bound_to_loopback() {
 }
 
 #[tokio::test]
+async fn test_serves_embedded_web_ui() {
+    let env = Env::new();
+    let (server, _) = spawn_test_server(env.home.path()).await;
+    let client = reqwest::Client::new();
+    let base = format!("http://{}", server.addr);
+
+    // GET / -> 200 OK with html
+    let resp = client.get(&base).send().await.unwrap();
+    assert_eq!(resp.status(), 200);
+    let ctype = resp
+        .headers()
+        .get("content-type")
+        .unwrap()
+        .to_str()
+        .unwrap();
+    assert!(ctype.contains("text/html"));
+    let body = resp.text().await.unwrap();
+    assert!(body.contains("<!DOCTYPE html>"));
+
+    // GET /index.html -> 200 OK
+    let resp = client
+        .get(format!("{base}/index.html"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+
+    // GET /task/fb-12 (SPA route) -> 200 OK falling back to index.html
+    let resp = client
+        .get(format!("{base}/task/fb-12"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let ctype = resp
+        .headers()
+        .get("content-type")
+        .unwrap()
+        .to_str()
+        .unwrap();
+    assert!(ctype.contains("text/html"));
+
+    // GET non-existent asset with extension -> 404
+    let resp = client
+        .get(format!("{base}/non-existent.css"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 404);
+}
+
+#[tokio::test]
 async fn test_cli_serve_subcommand_prints_token_and_serves() {
     let env = Env::new();
     let mut child = std::process::Command::new(assert_cmd::cargo::cargo_bin("fb"))

@@ -18,6 +18,8 @@ thiserror = "2.0.21"
 tokio = { version = "1.54.1", features = ["full"] }
 tokio-stream = { version = "0.1.19", features = ["sync"] }
 toml = "1.1.8"
+rust-embed = "8.5"
+mime_guess = "2.0"
 
 [dev-dependencies]
 assert_cmd = "2.2.2"
