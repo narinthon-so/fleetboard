@@ -10,8 +10,12 @@ import {
   GitCommitVertical,
   Lock,
   Unlink,
+  Play,
+  Pause,
+  ShieldAlert,
+  CircleOff,
 } from 'lucide-react';
-import type { Actor, TaskStatus } from '../types/api';
+import type { Actor, TaskStatus, AgentRuntimeStatus } from '../types/api';
 import { getProviderMonogram, formatShortId } from '../lib/format';
 import { cn } from '../lib/utils';
 
@@ -188,4 +192,65 @@ export function SignalIcon({
         </span>
       );
   }
+}
+
+export function RuntimeStatusBadge({
+  status,
+  pendingPermissions = 0,
+  className,
+}: {
+  status: AgentRuntimeStatus | string;
+  pendingPermissions?: number;
+  className?: string;
+}) {
+  const normalized = status.toLowerCase();
+  const isRunning = normalized === 'running';
+  const isIdle = normalized === 'idle';
+  const isPermission = normalized === 'permission' || normalized === 'waiting-for-permission';
+  const isGone = normalized === 'gone';
+
+  let colorClass = 'text-[var(--muted-foreground)] border-[var(--border)] bg-[var(--muted)]/30';
+  let dotColorClass = 'bg-[var(--muted-foreground)]';
+  let label = normalized;
+  let Icon = Circle;
+
+  if (isRunning) {
+    colorClass = 'text-[var(--runtime-running)] border-[var(--runtime-running)]/30 bg-[var(--runtime-running)]/10';
+    dotColorClass = 'bg-[var(--runtime-running)] animate-pulse';
+    label = 'running';
+    Icon = Play;
+  } else if (isIdle) {
+    colorClass = 'text-[var(--runtime-idle)] border-[var(--runtime-idle)]/30 bg-[var(--runtime-idle)]/10';
+    dotColorClass = 'bg-[var(--runtime-idle)]';
+    label = 'idle';
+    Icon = Pause;
+  } else if (isPermission) {
+    colorClass = 'text-[var(--runtime-permission)] border-[var(--runtime-permission)]/30 bg-[var(--runtime-permission)]/10';
+    dotColorClass = 'bg-[var(--runtime-permission)] animate-pulse';
+    const count = pendingPermissions > 0 ? pendingPermissions : 1;
+    label = `waiting-for-permission (${count})`;
+    Icon = ShieldAlert;
+  } else if (isGone) {
+    colorClass = 'text-[var(--runtime-gone)] border-[var(--runtime-gone)]/30 bg-[var(--runtime-gone)]/10';
+    dotColorClass = 'bg-[var(--runtime-gone)]';
+    label = 'gone';
+    Icon = CircleOff;
+  }
+
+  return (
+    <span
+      data-testid="runtime-status-badge"
+      data-runtime-status={normalized}
+      title={`Runtime status: ${label}`}
+      className={cn(
+        'inline-flex items-center gap-1 font-mono text-[10px] px-1 py-0.5 rounded border select-none leading-none shrink-0',
+        colorClass,
+        className
+      )}
+    >
+      <span className={cn('w-1.5 h-1.5 rounded-full shrink-0', dotColorClass)} />
+      <Icon className="w-2.5 h-2.5 shrink-0" />
+      <span>{label}</span>
+    </span>
+  );
 }

@@ -33,6 +33,15 @@ export function formatShortId(externalId: string | null, label: string): string 
 }
 
 export function getNeedsMeReason(task: Task): string {
+  const runtimeStatus = task.runtime_status || task.runtime?.status;
+  const perms = task.pending_permissions ?? task.runtime?.pending_permissions ?? 0;
+
+  // Pending permissions from runtime
+  if (perms > 0 || runtimeStatus === 'permission' || runtimeStatus === 'waiting-for-permission') {
+    const count = perms > 0 ? perms : 1;
+    return count === 1 ? '1 permission pending' : `${count} permissions pending`;
+  }
+
   if (task.status === 'review') {
     if (task.derived.no_evidence) {
       return 'review · no commits';
@@ -43,6 +52,9 @@ export function getNeedsMeReason(task: Task): string {
     return 'plan pending';
   }
   if (task.derived.stale) {
+    if (runtimeStatus === 'gone') {
+      return 'stale · agent gone';
+    }
     const age = task.claim ? formatDuration(task.claim.last_activity || task.claim.claimed_at) : '';
     return age ? `stale ${age}` : 'stale claim';
   }

@@ -40,6 +40,12 @@
   --priority-p1: #d97706;
   --priority-p2: #09090b;
   --priority-p3: #71717a;
+
+  /* Runtime tokens (Light) */
+  --runtime-running: #059669; /* emerald-600 */
+  --runtime-idle: #71717a; /* zinc-500 */
+  --runtime-permission: #d97706; /* amber-600 */
+  --runtime-gone: #dc2626; /* red-600 */
 }
 
 /* Dark mode by default */
@@ -82,6 +88,12 @@
   --priority-p1: #fbbf24; /* amber-400 */
   --priority-p2: #fafafa; /* default */
   --priority-p3: #a1a1aa; /* muted */
+
+  /* Runtime tokens (Dark) */
+  --runtime-running: #34d399; /* emerald-400 */
+  --runtime-idle: #a1a1aa; /* zinc-400 */
+  --runtime-permission: #fbbf24; /* amber-400 */
+  --runtime-gone: #f87171; /* red-400 */
 }
 
 body {

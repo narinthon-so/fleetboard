@@ -29,6 +29,10 @@ Use shadcn's CSS variables (`--background`, `--card`, `--muted`, `--border`, `--
 | `--signal-stale` | stale claim | orange-400 | `Clock` |
 | `--signal-no-evidence` | review without commits | red-400 | `GitCommitVertical` with a slash, label "no commits" |
 | `--signal-blocked` | blocked / orphaned | zinc-400 / red-400 | `Lock` / `Unlink` |
+| `--runtime-running` | agent running | emerald-400 | `Play` |
+| `--runtime-idle` | agent idle | zinc-400 | `Pause` |
+| `--runtime-permission` | agent waiting for permission | amber-400 | `ShieldAlert` |
+| `--runtime-gone` | agent gone / archived | red-400 | `CircleOff` |
 
 Priority: `P0` red-400 text, `P1` amber-400, `P2` default, `P3` muted. Shown as a small mono badge, never as card colour.
 
@@ -68,6 +72,9 @@ Priority: `P0` red-400 text, `P1` amber-400, `P2` default, `P3` muted. Shown as 
 ```
 
 - **Unclaimed cards** (Draft, Ready, Blocked) show the project and the ticket key instead of the agent line, for example `api · ABC-36`.
+- **Runtime status dot** appears on claimed cards next to the agent chip when reported by an orchestrator adapter (`running`, `idle`, `waiting-for-permission` with pending permission count, `gone`).
+- **Runtime-aware stale** sets the stale flag (`⏱ gone`) immediately when the runtime reports `gone` on an in-progress card.
+- **Needs-me chips** reflect runtime state: `[<id> · <count> permission(s) pending]` and `[<id> · stale · agent gone]`.
 - **The evidence line** appears only when a claim exists. With no commits it shows `no commits` in the no-evidence colour. With a snapshot it shows `snapshot 3h ago` in muted text.
 - **Hover** shows the full branch and path in a tooltip. Cards never grow beyond 4 lines.
 
