@@ -1,5 +1,5 @@
 import type { Task } from '../types/api';
-import { AgentChip, PriorityBadge, SignalIcon } from './atoms';
+import { AgentChip, PriorityBadge, SignalIcon, RuntimeStatusBadge } from './atoms';
 import { KanbanCard } from './kanban/kanban';
 import { GitBranch, Check, Dot } from 'lucide-react';
 import { formatDuration } from '../lib/format';
@@ -18,6 +18,10 @@ export function TaskCard({ task, isSelected = false, onClick, isReadOnly = false
   const isDropped = status === 'dropped';
   const hasNeedsMe = derived.needs_me;
 
+  const runtimeStatus = task.runtime_status || task.runtime?.status;
+  const pendingPermissions = task.pending_permissions ?? task.runtime?.pending_permissions ?? 0;
+  const isRuntimeGone = runtimeStatus === 'gone';
+
   // Stale age if claim exists
   const staleText = claim ? formatDuration(claim.last_activity || claim.claimed_at) : null;
 
@@ -26,7 +30,7 @@ export function TaskCard({ task, isSelected = false, onClick, isReadOnly = false
 
   // Tooltip text for hover: full branch and cwd
   const tooltipText = claim
-    ? `Branch: ${claim.branch || 'unknown'}\nPath: ${claim.cwd}\nHost: ${claim.host}`
+    ? `Branch: ${claim.branch || 'unknown'}\nPath: ${claim.cwd}\nHost: ${claim.host}${runtimeStatus ? `\nRuntime: ${runtimeStatus}${pendingPermissions > 0 ? ` (${pendingPermissions} pending)` : ''}` : ''}`
     : `Project: ${project?.key || 'none'}`;
 
   return (
@@ -49,10 +53,13 @@ export function TaskCard({ task, isSelected = false, onClick, isReadOnly = false
 
           <div className="flex items-center gap-1 text-[11px]">
             {derived.needs_me && <SignalIcon signal="needs-me" />}
-            {derived.stale && staleText && (
-              <span className="inline-flex items-center gap-0.5 text-[var(--signal-stale)] font-mono">
+            {derived.stale && (
+              <span
+                className="inline-flex items-center gap-0.5 text-[var(--signal-stale)] font-mono"
+                title={isRuntimeGone ? 'Stale: runtime agent gone' : (staleText ? `Stale: ${staleText}` : 'Stale claim')}
+              >
                 <SignalIcon signal="stale" />
-                <span>{staleText}</span>
+                <span>{isRuntimeGone ? 'gone' : (staleText || 'stale')}</span>
               </span>
             )}
             {derived.blocked && !derived.orphaned && <SignalIcon signal="blocked" />}
@@ -76,8 +83,14 @@ export function TaskCard({ task, isSelected = false, onClick, isReadOnly = false
         <div className="flex items-center gap-1 text-[11px] font-mono text-[var(--muted-foreground)] leading-none mt-0.5 min-w-0">
           {claim ? (
             <>
-              <div className="shrink-0">
+              <div className="shrink-0 flex items-center gap-1">
                 <AgentChip actor={claim.actor} />
+                {runtimeStatus && (
+                  <RuntimeStatusBadge
+                    status={runtimeStatus}
+                    pendingPermissions={pendingPermissions}
+                  />
+                )}
               </div>
               <span className="shrink-0">·</span>
               <span className="shrink-0 max-w-[90px] truncate" title={claim.host}>{claim.host}</span>

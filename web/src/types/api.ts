@@ -8,6 +8,18 @@ export type TaskStatus =
 
 export type TaskKind = 'code' | 'note';
 
+export type AgentRuntimeStatus =
+  | 'running'
+  | 'idle'
+  | 'permission'
+  | 'waiting-for-permission'
+  | 'gone';
+
+export interface RuntimeInfo {
+  status: AgentRuntimeStatus;
+  pending_permissions: number;
+}
+
 export interface Project {
   id?: number;
   key: string;
@@ -91,6 +103,9 @@ export interface Task {
   claim: Claim | null;
   derived: Derived;
   evidence: Evidence | null;
+  runtime?: RuntimeInfo | null;
+  runtime_status?: AgentRuntimeStatus | null;
+  pending_permissions?: number | null;
   created_by: Actor;
   created_at: string;
   updated_at: string;

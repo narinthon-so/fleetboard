@@ -13,7 +13,7 @@ import {
   addComment,
 } from '../lib/api';
 import type { Task } from '../types/api';
-import { AgentChip, PriorityBadge, StatusBadge, SignalIcon } from './atoms';
+import { AgentChip, PriorityBadge, StatusBadge, SignalIcon, RuntimeStatusBadge } from './atoms';
 import { formatDuration } from '../lib/format';
 import { ConfirmDialog, RejectDialog, StealDialog } from './ActionDialogs';
 import { toast } from '../lib/toast';
@@ -421,6 +421,15 @@ export function CardDetail({
               )}
               <span>·</span>
               <span>created by {task.created_by.label} {formatDuration(task.created_at)} ago</span>
+              {(task.runtime_status || task.runtime?.status) && (
+                <>
+                  <span>·</span>
+                  <RuntimeStatusBadge
+                    status={task.runtime_status || task.runtime!.status}
+                    pendingPermissions={task.pending_permissions ?? task.runtime?.pending_permissions ?? 0}
+                  />
+                </>
+              )}
             </div>
           )}
         </div>
@@ -618,6 +627,23 @@ export function CardDetail({
                       <span className="text-[var(--muted-foreground)]">Claimant:</span>
                       <AgentChip actor={task.claim.actor} />
                     </div>
+                    {(task.runtime_status || task.runtime?.status) && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-[var(--muted-foreground)]">Runtime:</span>
+                        <RuntimeStatusBadge
+                          status={task.runtime_status || task.runtime!.status}
+                          pendingPermissions={task.pending_permissions ?? task.runtime?.pending_permissions ?? 0}
+                        />
+                      </div>
+                    )}
+                    {(task.pending_permissions ?? task.runtime?.pending_permissions ?? 0) > 0 && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-[var(--muted-foreground)]">Permissions:</span>
+                        <span className="text-[var(--runtime-permission)] font-semibold">
+                          {task.pending_permissions ?? task.runtime?.pending_permissions} pending approval
+                        </span>
+                      </div>
+                    )}
                     <div className="flex items-center gap-2">
                       <span className="text-[var(--muted-foreground)]">Host:</span>
                       <span>{task.claim.host}</span>
