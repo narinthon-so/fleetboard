@@ -141,6 +141,27 @@ pub fn authorize(action: Action, role: Role) -> Result<(), ModelError> {
     }
 }
 
+pub const DELEGATABLE_ACTIONS: &[&str] = &[
+    "promote", "approve", "verify", "reject", "release", "steal", "drop", "reopen",
+];
+
+pub fn is_delegatable(action: &str) -> bool {
+    DELEGATABLE_ACTIONS.contains(&action)
+}
+
+/// Role check with delegation. If the actor has been granted delegated rights
+/// for this action, the check succeeds even if the actor is an agent.
+pub fn authorize_with_delegation(
+    action: Action,
+    role: Role,
+    delegated: bool,
+) -> Result<(), ModelError> {
+    if delegated {
+        return Ok(());
+    }
+    authorize(action, role)
+}
+
 /// Human-only operations that are not task actions (trust, project alias).
 pub fn require_human(role: Role, what: &'static str) -> Result<(), ModelError> {
     if role == Role::Human {
@@ -502,5 +523,27 @@ mod tests {
         assert_eq!(Status::parse("nope"), None);
         assert_eq!(Kind::parse("note"), Some(Kind::Note));
         assert_eq!(Kind::parse("x"), None);
+    }
+
+    #[test]
+    fn delegation_action_authorization() {
+        assert_eq!(DELEGATABLE_ACTIONS.len(), 8);
+        for a in DELEGATABLE_ACTIONS {
+            assert!(is_delegatable(a));
+        }
+        assert!(!is_delegatable("claim"));
+        assert!(!is_delegatable("done"));
+        assert!(!is_delegatable("delegate"));
+        assert!(!is_delegatable("undelegate"));
+
+        // With delegated = true, agent can run promote, verify, etc.
+        assert!(authorize_with_delegation(Action::Promote, Role::Agent, true).is_ok());
+        assert!(authorize_with_delegation(Action::Verify, Role::Agent, true).is_ok());
+        assert!(authorize_with_delegation(Action::Steal, Role::Agent, true).is_ok());
+
+        // With delegated = false, agent cannot run human-only commands
+        assert!(authorize_with_delegation(Action::Promote, Role::Agent, false).is_err());
+        assert!(authorize_with_delegation(Action::Verify, Role::Agent, false).is_err());
+        assert!(authorize_with_delegation(Action::Steal, Role::Agent, false).is_err());
     }
 }

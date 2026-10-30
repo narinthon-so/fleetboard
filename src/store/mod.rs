@@ -28,6 +28,21 @@ pub trait Backend {
     fn find_actor(&self, spec: &str) -> Result<Actor>;
     fn set_trusted(&self, actor: &Actor, target: &Actor, trusted: bool, ctx: &Ctx)
     -> Result<Actor>;
+    fn delegate(
+        &self,
+        actor: &Actor,
+        target: &Actor,
+        allowed: &[String],
+        ctx: &Ctx,
+    ) -> Result<Vec<String>>;
+    fn undelegate(
+        &self,
+        actor: &Actor,
+        target: &Actor,
+        revoked: Option<&[String]>,
+        ctx: &Ctx,
+    ) -> Result<Vec<String>>;
+    fn get_delegations(&self, actor_id: i64) -> Result<Vec<String>>;
 
     fn find_project(&self, key_or_alias: &str) -> Result<Option<Project>>;
     fn set_alias(

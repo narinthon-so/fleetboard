@@ -143,6 +143,7 @@ pub struct EventRow {
     pub ppid: u32,
     pub proc_chain: Option<String>,
     pub created_at: DateTime<Utc>,
+    pub on_behalf_of: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -162,6 +163,8 @@ pub struct TaskDetail {
     pub claims: Vec<ClaimRow>,
     /// Oldest first.
     pub notes: Vec<NoteRow>,
+    /// Oldest first.
+    pub history: Vec<EventRow>,
 }
 
 #[derive(Debug, Clone)]

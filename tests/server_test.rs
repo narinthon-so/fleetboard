@@ -212,6 +212,7 @@ async fn test_login_then_board_and_task_ok() {
         "events list should contain created event"
     );
     assert_eq!(events[0]["type"], "created");
+    assert!(events[0].get("on_behalf_of").is_some());
 
     // GET /api/tasks/fb-99999 -> 404
     let resp = client
