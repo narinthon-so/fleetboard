@@ -163,6 +163,10 @@ fn derive_for(
                 .is_some_and(|c| claim_is_stale(adapter, c, host, now, stale_after)),
         commits,
         pending_permissions,
+        permission_required: t.claim.as_ref().is_some_and(|c| {
+            adapter.agent_status(&c.actor.external_id)
+                == Some(crate::adapters::AgentRuntimeStatus::Permission)
+        }),
     })
 }
 

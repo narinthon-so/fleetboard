@@ -1358,6 +1358,10 @@ fn derive_for(s: &Session, t: &TaskRow) -> Derived {
             && t.claim.as_ref().is_some_and(|c| claim_is_stale(s, c)),
         commits,
         pending_permissions,
+        permission_required: t.claim.as_ref().is_some_and(|c| {
+            s.adapter.agent_status(&c.actor.external_id)
+                == Some(crate::adapters::AgentRuntimeStatus::Permission)
+        }),
     })
 }
 

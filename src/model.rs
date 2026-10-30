@@ -226,6 +226,8 @@ pub struct Facts<'a> {
     pub commits: Option<u32>,
     /// Number of permissions waiting on human operator approval (M2).
     pub pending_permissions: u32,
+    /// Runtime reports a permission wait even without individual permission IDs.
+    pub permission_required: bool,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
@@ -261,7 +263,8 @@ pub fn derive(f: &Facts) -> Derived {
             || orphaned
             || review
             || no_evidence
-            || f.pending_permissions > 0,
+            || f.pending_permissions > 0
+            || f.permission_required,
     }
 }
 
@@ -395,6 +398,7 @@ mod tests {
             claim_stale: false,
             commits: None,
             pending_permissions: 0,
+            permission_required: false,
         }
     }
 
@@ -407,6 +411,15 @@ mod tests {
             ..facts(InProgress, &[])
         };
         assert!(derive(&f1).needs_me);
+    }
+
+    #[test]
+    fn permission_status_without_ids_joins_needs_me() {
+        let f = Facts {
+            permission_required: true,
+            ..facts(InProgress, &[])
+        };
+        assert!(derive(&f).needs_me);
     }
 
     #[test]
