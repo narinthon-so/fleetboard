@@ -1,16 +1,28 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { getBoard, ApiError } from './lib/api';
+import { getBoard, ApiError, verifyTask, rejectTask } from './lib/api';
 import { TopBar, type BoardFilters, type SSEStatus } from './components/TopBar';
 import { NeedsMeStrip } from './components/NeedsMeStrip';
 import { BoardView } from './components/BoardView';
 import { CardDetail } from './components/CardDetail';
 import { LoginScreen } from './components/LoginScreen';
 import { ShortcutsDialog } from './components/ShortcutsDialog';
+import { ToastContainer } from './components/Toast';
+import { toast } from './lib/toast';
+import { ConfirmDialog, RejectDialog } from './components/ActionDialogs';
 import { AlertTriangle, WifiOff } from 'lucide-react';
 import { cn } from './lib/utils';
 
 export function App() {
+  return (
+    <>
+      <BoardApp />
+      <ToastContainer />
+    </>
+  );
+}
+
+function BoardApp() {
   const queryClient = useQueryClient();
 
   // Theme state: dark default
@@ -54,6 +66,10 @@ export function App() {
   // Keyboard shortcuts dialog state
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
 
+  // Keyboard shortcut confirmation dialogs for 'v' and 'r'
+  const [keyVerifyTask, setKeyVerifyTask] = useState<{ id: string; force: boolean; description: string } | null>(null);
+  const [keyRejectTask, setKeyRejectTask] = useState<string | null>(null);
+
   // SSE status
   const [sseStatus, setSseStatus] = useState<SSEStatus>('connected');
   const [isLongDisconnected, setIsLongDisconnected] = useState(false);
@@ -61,6 +77,8 @@ export function App() {
 
   // Auth needed state
   const [isAuthNeeded, setIsAuthNeeded] = useState(false);
+
+  const isReadOnly = isDaemonDown || sseStatus === 'reconnecting';
 
   // Sync state to URL
   useEffect(() => {
@@ -183,8 +201,10 @@ export function App() {
   // List of all visible tasks for j/k keyboard navigation
   const taskIdsList = useMemo(() => {
     if (!boardData) return [];
-    return boardData.tasks.map((t) => t.id);
-  }, [boardData]);
+    return boardData.tasks
+      .filter((t) => filters.showDropped || t.status !== 'dropped')
+      .map((t) => t.id);
+  }, [boardData, filters.showDropped]);
 
   // Global Keyboard shortcuts
   useEffect(() => {
@@ -209,6 +229,10 @@ export function App() {
       if (e.key === 'Escape') {
         if (isShortcutsOpen) {
           setIsShortcutsOpen(false);
+        } else if (keyVerifyTask) {
+          setKeyVerifyTask(null);
+        } else if (keyRejectTask) {
+          setKeyRejectTask(null);
         } else if (selectedTaskId) {
           setSelectedTaskId(null);
         }
@@ -265,10 +289,45 @@ export function App() {
       }
 
       if (e.key === 'Enter') {
-        // Open card if selected
         if (selectedTaskId) {
-          // already open, or ensures focus
+          // Card is open or selected
         }
+        return;
+      }
+
+      // 'v' verifies the open card (confirm first)
+      if (e.key === 'v') {
+        if (!selectedTaskId || isReadOnly) return;
+        const task = boardData?.tasks.find((t) => t.id === selectedTaskId);
+        if (task && task.status === 'review') {
+          e.preventDefault();
+          const hasEvidence = task.evidence && task.evidence.commits > 0;
+          if (!hasEvidence || task.derived.no_evidence) {
+            setKeyVerifyTask({
+              id: task.id,
+              force: true,
+              description: `Task ${task.id} has no commit evidence. Verifying without evidence requires force. Verify with --force?`,
+            });
+          } else {
+            setKeyVerifyTask({
+              id: task.id,
+              force: false,
+              description: `Verify task ${task.id} (${task.evidence?.commits} commits) and mark it done?`,
+            });
+          }
+        }
+        return;
+      }
+
+      // 'r' rejects the open card (confirm first with comment)
+      if (e.key === 'r') {
+        if (!selectedTaskId || isReadOnly) return;
+        const task = boardData?.tasks.find((t) => t.id === selectedTaskId);
+        if (task && task.status === 'review') {
+          e.preventDefault();
+          setKeyRejectTask(task.id);
+        }
+        return;
       }
     }
 
@@ -277,7 +336,39 @@ export function App() {
       window.removeEventListener('keydown', handleKeyDown);
       if (gTimeout) clearTimeout(gTimeout);
     };
-  }, [boardData, selectedTaskId, taskIdsList, isShortcutsOpen]);
+  }, [boardData, selectedTaskId, taskIdsList, isShortcutsOpen, keyVerifyTask, keyRejectTask, isReadOnly]);
+
+  async function handleKeyVerifyConfirm() {
+    if (!keyVerifyTask) return;
+    const { id, force } = keyVerifyTask;
+    setKeyVerifyTask(null);
+    try {
+      await verifyTask(id, force);
+      toast(`${id} verified and marked done`, 'success');
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['board'] }),
+        queryClient.invalidateQueries({ queryKey: ['task', id] }),
+      ]);
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Verify failed', 'error');
+    }
+  }
+
+  async function handleKeyRejectConfirm(comment: string) {
+    if (!keyRejectTask) return;
+    const id = keyRejectTask;
+    setKeyRejectTask(null);
+    try {
+      await rejectTask(id, comment);
+      toast(`${id} rejected back to in_progress`, 'info');
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['board'] }),
+        queryClient.invalidateQueries({ queryKey: ['task', id] }),
+      ]);
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Reject failed', 'error');
+    }
+  }
 
   // If authentication is needed, show only LoginScreen
   if (isAuthNeeded) {
@@ -350,6 +441,7 @@ export function App() {
             isLoading={isLoading && !boardData}
             selectedTaskId={selectedTaskId}
             onSelectTask={(id) => setSelectedTaskId(id)}
+            isReadOnly={isReadOnly}
           />
         </main>
       </div>
@@ -360,6 +452,8 @@ export function App() {
           taskId={selectedTaskId}
           onClose={() => setSelectedTaskId(null)}
           onNavigateTask={(id) => setSelectedTaskId(id)}
+          allTasks={boardData?.tasks || []}
+          isReadOnly={isReadOnly}
         />
       )}
 
@@ -368,6 +462,29 @@ export function App() {
         isOpen={isShortcutsOpen}
         onClose={() => setIsShortcutsOpen(false)}
       />
+
+      {/* Keyboard shortcut 'v' confirm dialog */}
+      {keyVerifyTask && (
+        <ConfirmDialog
+          isOpen={true}
+          title={keyVerifyTask.force ? 'Verify without evidence' : `Verify task ${keyVerifyTask.id}`}
+          description={keyVerifyTask.description}
+          confirmLabel={keyVerifyTask.force ? 'Verify with force' : 'Verify and Complete'}
+          confirmVariant={keyVerifyTask.force ? 'destructive' : 'primary'}
+          onConfirm={handleKeyVerifyConfirm}
+          onCancel={() => setKeyVerifyTask(null)}
+        />
+      )}
+
+      {/* Keyboard shortcut 'r' reject dialog */}
+      {keyRejectTask && (
+        <RejectDialog
+          isOpen={true}
+          taskId={keyRejectTask}
+          onConfirm={handleKeyRejectConfirm}
+          onCancel={() => setKeyRejectTask(null)}
+        />
+      )}
     </div>
   );
 }

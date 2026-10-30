@@ -15,6 +15,8 @@ export function ShortcutsDialog({ isOpen, onClose }: ShortcutsDialogProps) {
     { key: 'Enter', desc: 'Open selected card details' },
     { key: 'Esc', desc: 'Close open sheet or dialog' },
     { key: 'g n', desc: 'Jump to first Needs me card' },
+    { key: 'v', desc: 'Verify open card (confirm first)' },
+    { key: 'r', desc: 'Reject open card (with comment)' },
     { key: '?', desc: 'Show this keyboard shortcuts cheat-sheet' },
   ];
 

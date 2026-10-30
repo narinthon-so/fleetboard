@@ -9,9 +9,10 @@ interface TaskCardProps {
   task: Task;
   isSelected?: boolean;
   onClick?: () => void;
+  isReadOnly?: boolean;
 }
 
-export function TaskCard({ task, isSelected = false, onClick }: TaskCardProps) {
+export function TaskCard({ task, isSelected = false, onClick, isReadOnly = false }: TaskCardProps) {
   const { id, title, priority, status, derived, claim, evidence, project, ticket } = task;
   const isDraft = status === 'draft';
   const isDropped = status === 'dropped';
@@ -35,6 +36,7 @@ export function TaskCard({ task, isSelected = false, onClick }: TaskCardProps) {
       isDraft={isDraft}
       hasNeedsMe={hasNeedsMe}
       onClick={onClick}
+      isReadOnly={isReadOnly}
       className="text-xs"
     >
       <div title={tooltipText} className="flex flex-col gap-1 w-full overflow-hidden">
@@ -69,25 +71,28 @@ export function TaskCard({ task, isSelected = false, onClick }: TaskCardProps) {
           {title}
         </div>
 
-        {/* Line 3: Agent Chip · host · repo · branch OR Unclaimed (project · ticket) */}
-        <div className="flex items-center gap-1 text-[11px] font-mono text-[var(--muted-foreground)] truncate leading-none mt-0.5">
+        {/* Line 3: Agent Chip · host · repo · branch OR Unclaimed (project · ticket)
+            Polish: Host and repo shrink last, branch shrinks first. Full values in tooltip. */}
+        <div className="flex items-center gap-1 text-[11px] font-mono text-[var(--muted-foreground)] leading-none mt-0.5 min-w-0">
           {claim ? (
             <>
-              <AgentChip actor={claim.actor} />
-              <span>·</span>
-              <span className="truncate">{claim.host}</span>
-              <span>·</span>
-              <span className="truncate">{repoName}</span>
-              <span>·</span>
-              <span className="truncate">{claim.branch || 'main'}</span>
+              <div className="shrink-0">
+                <AgentChip actor={claim.actor} />
+              </div>
+              <span className="shrink-0">·</span>
+              <span className="shrink-0 max-w-[90px] truncate" title={claim.host}>{claim.host}</span>
+              <span className="shrink-0">·</span>
+              <span className="shrink-0 max-w-[110px] truncate" title={repoName}>{repoName}</span>
+              <span className="shrink-0">·</span>
+              <span className="truncate min-w-0 flex-1" title={claim.branch || 'main'}>{claim.branch || 'main'}</span>
             </>
           ) : (
             <>
-              <span className="truncate text-[var(--foreground)]/80">{repoName}</span>
+              <span className="truncate text-[var(--foreground)]/80" title={repoName}>{repoName}</span>
               {ticket && (
                 <>
-                  <span>·</span>
-                  <span className="text-[var(--primary)] font-semibold">{ticket.key}</span>
+                  <span className="shrink-0">·</span>
+                  <span className="text-[var(--primary)] font-semibold shrink-0" title={ticket.key}>{ticket.key}</span>
                 </>
               )}
             </>
