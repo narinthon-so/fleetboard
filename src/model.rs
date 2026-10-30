@@ -224,6 +224,8 @@ pub struct Facts<'a> {
     pub claim_stale: bool,
     /// Commits in the evidence, when known. `None` means not computed.
     pub commits: Option<u32>,
+    /// Number of permissions waiting on human operator approval (M2).
+    pub pending_permissions: u32,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
@@ -258,7 +260,8 @@ pub fn derive(f: &Facts) -> Derived {
             || stale
             || orphaned
             || review
-            || no_evidence,
+            || no_evidence
+            || f.pending_permissions > 0,
     }
 }
 
@@ -391,7 +394,19 @@ mod tests {
             blockers,
             claim_stale: false,
             commits: None,
+            pending_permissions: 0,
         }
+    }
+
+    #[test]
+    fn pending_permissions_join_needs_me() {
+        let f0 = facts(InProgress, &[]);
+        assert!(!derive(&f0).needs_me);
+        let f1 = Facts {
+            pending_permissions: 1,
+            ..facts(InProgress, &[])
+        };
+        assert!(derive(&f1).needs_me);
     }
 
     #[test]

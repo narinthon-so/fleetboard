@@ -1,5 +1,6 @@
 //! fleetboard core library. See DESIGN.md.
 
+pub mod adapters; // M2 runtime adapters (none, paseo)
 pub mod config; // config.toml loading and durations
 pub mod gitinfo; // project key, instance, evidence — owner: agy (branch m0-identity-git)
 pub mod identity; // caller identity resolution (D3) — owner: agy (branch m0-identity-git)

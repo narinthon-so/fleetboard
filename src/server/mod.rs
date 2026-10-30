@@ -31,6 +31,7 @@ pub struct AppState {
     pub sessions: Arc<RwLock<HashSet<String>>>,
     pub tx_change: broadcast::Sender<()>,
     pub host: String,
+    pub adapter: Arc<dyn crate::adapters::RuntimeAdapter>,
 }
 
 impl AppState {
@@ -39,6 +40,9 @@ impl AppState {
         let db_path = config.home.join("board.db");
         // Ensure database schema and WAL mode are initialized
         let _ = crate::store::SqliteBackend::open(&db_path)?;
+
+        let cfg = crate::config::load(&config.home).unwrap_or_default();
+        let adapter = crate::adapters::make_adapter(&cfg.adapter);
 
         let (tx_change, _) = broadcast::channel(64);
         let host = gethostname::gethostname().to_string_lossy().into_owned();
@@ -53,6 +57,7 @@ impl AppState {
             host,
             db_path,
             config,
+            adapter,
         });
 
         Ok(state)

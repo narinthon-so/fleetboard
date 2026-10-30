@@ -1,6 +1,6 @@
 # fleetboard — design
 
-Status: draft (2026-10-29). Covers M0 in detail, with M1–M3 in outline.
+Status: draft (2026-10-30). Covers M0–M2 in detail, with M3 in outline.
 Decisions D1–D11 and the prior-art review are in [IDEA.md](IDEA.md); this file
 turns them into a schema, a command reference and rules an implementation can
 be tested against.
@@ -341,25 +341,33 @@ gh          = true          # use gh for PR / CI evidence when installed
 
 ## Architecture
 
-One Rust crate, library + binary, for M0:
+One Rust crate, library + binary:
 
 ```
 src/
   main.rs        clap CLI, output formatting, exit codes
+  cli.rs         command parsing and execution
+  config.rs      config.toml loading, durations, adapter selection
   store/         schema, migrations, queries (rusqlite); Backend trait (D7)
   model.rs       Task, Claim, Actor, status machine, derived states
-  identity.rs    env + process-ancestry resolution
+  identity.rs    env + process-ancestry resolution (D3)
   gitinfo.rs     project key, instance, evidence (shells out to git / gh)
-  prime.rs
+  prime.rs       fb prime context generation
+  server/        M1 axum loopback server, auth tokens, read API, SSE
+  adapters/      M2 RuntimeAdapter trait: instances(), agent_status(id), pending_permissions(id)
+    none.rs      default self-report adapter
+    paseo.rs     Paseo adapter (workspace ls, ls, inspect; longest prefix join; 5 s cache)
 ```
 
 `Backend` trait from day one with one `SqliteBackend`; `HttpBackend` arrives
 with remote mode. The status machine and derived-state rules live in
 `model.rs` with no I/O, so they are unit-testable alone.
 
-Later milestones add `server/` (axum, SSE, embedded `web/dist` via
-`rust-embed`), `adapters/` (`RuntimeAdapter` trait: `instances()`,
-`agent_status(id)`, `pending_permissions(id)`), and an `mcp` subcommand.
+The `RuntimeAdapter` trait provides live integration with agent orchestrators:
+- `instances()` returns active instances joined on cwd (longest prefix).
+- `agent_status(external_id)` returns `running`, `idle`, `permission`, or `gone`.
+- `pending_permissions(external_id)` returns count of pending permissions.
+- In `PaseoAdapter`, if `paseo` binary is missing or errors, fleetboard degrades to `none` with a warning on stderr and never fails commands.
 
 ## Testing
 
@@ -369,6 +377,7 @@ Later milestones add `server/` (axum, SSE, embedded `web/dist` via
 - **Identity:** env injection for each provider rule; `--as-human` refused under each agent marker.
 - **JSON contract:** snapshot tests (`insta`) of `--json` output so the agent-facing format cannot change by accident.
 - `gh` is stubbed with a fake binary on `PATH` in tests.
+- **Adapters (M2):** tested with a fake `paseo` binary on `PATH` covering fixtures for `running`, `idle`, `permission`, `archived`, `missing`, `binary absent`, and `garbage output`. Verifies that archiving an agent marks its claim stale within one poll, and pending permissions join the Needs-me view.
 
 ## Milestones (D10)
 

@@ -11,6 +11,8 @@ pub struct Config {
     pub stale_after: Duration,
     /// Use `gh` for PR / CI evidence when installed.
     pub gh: bool,
+    /// Orchestrator adapter: "none" (default) | "paseo" (M2).
+    pub adapter: String,
 }
 
 impl Default for Config {
@@ -18,6 +20,7 @@ impl Default for Config {
         Config {
             stale_after: Duration::hours(2),
             gh: true,
+            adapter: "none".to_string(),
         }
     }
 }
@@ -26,8 +29,6 @@ impl Default for Config {
 struct Raw {
     stale_after: Option<String>,
     gh: Option<bool>,
-    /// Reserved for M2+; accepted so the file does not fail to parse.
-    #[allow(dead_code)]
     adapter: Option<String>,
 }
 
@@ -51,6 +52,9 @@ fn parse(text: &str) -> std::result::Result<Config, String> {
     }
     if let Some(g) = raw.gh {
         cfg.gh = g;
+    }
+    if let Some(a) = raw.adapter {
+        cfg.adapter = a;
     }
     Ok(cfg)
 }
@@ -87,9 +91,15 @@ mod tests {
     #[test]
     fn defaults_and_overrides() {
         let d = parse("").unwrap();
-        assert_eq!((d.stale_after, d.gh), (Duration::hours(2), true));
-        let c = parse("stale_after = \"15m\"\ngh = false\nadapter = \"none\"\n").unwrap();
-        assert_eq!((c.stale_after, c.gh), (Duration::minutes(15), false));
+        assert_eq!(
+            (d.stale_after, d.gh, d.adapter.as_str()),
+            (Duration::hours(2), true, "none")
+        );
+        let c = parse("stale_after = \"15m\"\ngh = false\nadapter = \"paseo\"\n").unwrap();
+        assert_eq!(
+            (c.stale_after, c.gh, c.adapter.as_str()),
+            (Duration::minutes(15), false, "paseo")
+        );
         assert!(parse("stale_after = \"soon\"").is_err());
     }
 }

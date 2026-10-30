@@ -273,6 +273,7 @@ struct Session<'a> {
     /// Present only inside a git repo.
     loc: Option<Location>,
     cli: &'a Cli,
+    adapter: std::sync::Arc<dyn fleetboard::adapters::RuntimeAdapter>,
 }
 
 fn fb_home(cli: &Cli) -> Result<PathBuf> {
@@ -375,6 +376,7 @@ fn execute(cli: &Cli) -> Result<Out> {
         return serve_cmd(cli, &home, *port);
     }
     let cfg = config::load(&home)?;
+    let adapter = fleetboard::adapters::make_adapter(&cfg.adapter);
     let db = SqliteBackend::open(&home.join("board.db"))?;
 
     let chain = proc_chain();
@@ -414,6 +416,7 @@ fn execute(cli: &Cli) -> Result<Out> {
         cwd,
         loc,
         cli,
+        adapter,
     };
     dispatch(&s)
 }
@@ -498,6 +501,9 @@ fn dispatch(s: &Session) -> Result<Out> {
             } else {
                 None
             };
+            let workspace_id = s
+                .adapter
+                .workspace_id(&s.actor.external_id, &s.cwd.to_string_lossy());
             let req = ClaimRequest {
                 id: id.as_deref().map(parse_id).transpose()?,
                 steal: *steal,
@@ -512,6 +518,7 @@ fn dispatch(s: &Session) -> Result<Out> {
                     head: None,
                 }),
                 scope_project,
+                workspace_id,
             };
             let t = s.db.claim(&s.actor, &req, &s.ctx)?;
             let c = t.claim.as_ref().expect("claimed task has a claim");
@@ -935,6 +942,11 @@ fn latest_claim(s: &Session, t: &TaskRow) -> Option<ClaimRow> {
 // ---------- derived state ----------
 
 fn claim_is_stale(s: &Session, c: &ClaimRow) -> bool {
+    if let Some(status) = s.adapter.agent_status(&c.actor.external_id)
+        && status == fleetboard::adapters::AgentRuntimeStatus::Gone
+    {
+        return true;
+    }
     let last_commit = if c.host == s.host {
         c.branch
             .as_deref()
@@ -955,6 +967,11 @@ fn derive_for(s: &Session, t: &TaskRow) -> Derived {
     } else {
         None
     };
+    let pending_permissions = t
+        .claim
+        .as_ref()
+        .map_or(0, |c| s.adapter.pending_permissions(&c.actor.external_id));
+
     model::derive(&Facts {
         status: t.status,
         kind: t.kind,
@@ -965,6 +982,7 @@ fn derive_for(s: &Session, t: &TaskRow) -> Derived {
         claim_stale: t.status == Status::InProgress
             && t.claim.as_ref().is_some_and(|c| claim_is_stale(s, c)),
         commits,
+        pending_permissions,
     })
 }
 
@@ -990,8 +1008,8 @@ fn claim_json(c: &ClaimRow) -> Value {
     })
 }
 
-fn task_json(t: &TaskRow, d: &Derived) -> Value {
-    json!({
+fn task_json(s: &Session, t: &TaskRow, d: &Derived) -> Value {
+    let mut val = json!({
         "id": fmt_id(t.id),
         "title": t.title,
         "kind": t.kind.as_str(),
@@ -1013,19 +1031,33 @@ fn task_json(t: &TaskRow, d: &Derived) -> Value {
         "created_by": t.created_by,
         "created_at": ts(t.created_at),
         "updated_at": ts(t.updated_at),
-    })
+    });
+
+    if let Some(c) = &t.claim
+        && let Some(st) = s.adapter.agent_status(&c.actor.external_id)
+    {
+        let perms = s.adapter.pending_permissions(&c.actor.external_id);
+        val["runtime"] = json!({
+            "status": st.as_str(),
+            "pending_permissions": perms,
+        });
+        val["runtime_status"] = json!(st.as_str());
+        val["pending_permissions"] = json!(perms);
+    }
+
+    val
 }
 
 fn task_out(s: &Session, t: &TaskRow, text: String) -> Result<Out> {
     Ok(Out {
-        data: json!({ "task": task_json(t, &derive_for(s, t)) }),
+        data: json!({ "task": task_json(s, t, &derive_for(s, t)) }),
         text,
     })
 }
 
 // ---------- text rendering ----------
 
-fn flags(d: &Derived) -> String {
+fn flags(d: &Derived, perms: u32) -> String {
     let mut f = Vec::new();
     for (on, name) in [
         (d.ready, "ready"),
@@ -1034,6 +1066,7 @@ fn flags(d: &Derived) -> String {
         (d.plan_pending, "plan-pending"),
         (d.stale, "stale"),
         (d.no_evidence, "no-evidence"),
+        (perms > 0, "permission"),
         (d.needs_me, "needs-me"),
     ] {
         if on {
@@ -1047,7 +1080,11 @@ fn flags(d: &Derived) -> String {
     }
 }
 
-fn line(t: &TaskRow, d: &Derived) -> String {
+fn line(s: &Session, t: &TaskRow, d: &Derived) -> String {
+    let perms = t
+        .claim
+        .as_ref()
+        .map_or(0, |c| s.adapter.pending_permissions(&c.actor.external_id));
     let who = t.claim.as_ref().map_or(String::new(), |c| {
         format!(
             "  {} @ {}{}",
@@ -1066,7 +1103,7 @@ fn line(t: &TaskRow, d: &Derived) -> String {
             .map_or(String::new(), |p| format!("[{}] ", p.display())),
         t.title,
         who,
-        flags(d)
+        flags(d, perms)
     )
 }
 
@@ -1075,8 +1112,8 @@ fn list_out(s: &Session, tasks: Vec<TaskRow>, evidence: bool) -> Result<Out> {
     let mut items = Vec::new();
     for t in &tasks {
         let d = derive_for(s, t);
-        text.push_str(&line(t, &d));
-        let mut j = task_json(t, &d);
+        text.push_str(&line(s, t, &d));
+        let mut j = task_json(s, t, &d);
         if evidence && let Some(c) = latest_claim(s, t) {
             j["evidence"] = live_evidence(s, &c).to_json();
         }
@@ -1094,7 +1131,7 @@ fn list_out(s: &Session, tasks: Vec<TaskRow>, evidence: bool) -> Result<Out> {
 fn show_out(s: &Session, d: TaskDetail, evidence: bool) -> Result<Out> {
     let t = &d.task;
     let derived = derive_for(s, t);
-    let mut j = task_json(t, &derived);
+    let mut j = task_json(s, t, &derived);
     j["claims"] = json!(d.claims.iter().map(claim_json).collect::<Vec<_>>());
     j["notes"] = json!(
         d.notes
@@ -1115,7 +1152,18 @@ fn show_out(s: &Session, d: TaskDetail, evidence: bool) -> Result<Out> {
     };
     j["evidence"] = ev.as_ref().map_or(Value::Null, Ev::to_json);
 
-    let mut text = line(t, &derived);
+    let mut text = line(s, t, &derived);
+    if let Some(c) = t.claim.as_ref()
+        && let Some(st) = s.adapter.agent_status(&c.actor.external_id)
+    {
+        let p = s.adapter.pending_permissions(&c.actor.external_id);
+        text.push_str(&format!(
+            "runtime: {} ({} pending {})\n",
+            st.as_str(),
+            p,
+            if p == 1 { "permission" } else { "permissions" }
+        ));
+    }
     for (name, v) in [
         ("goal", &t.goal),
         ("acceptance", &t.acceptance),
@@ -1242,7 +1290,7 @@ fn prime_out(s: &Session) -> Result<Out> {
             (true, false) => PlanState::Pending,
         };
         claims_json.push(json!({
-            "task": task_json(t, &derive_for(s, t)),
+            "task": task_json(s, t, &derive_for(s, t)),
             "last_handoff": handoff.as_ref().map(|h| json!({
                 "author": h.author,
                 "age_seconds": h.age.num_seconds(),

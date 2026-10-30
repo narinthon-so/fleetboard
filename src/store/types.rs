@@ -207,6 +207,7 @@ pub struct ClaimRequest {
     pub loc: Location,
     /// Scope for picking a ready task when `id` is None.
     pub scope_project: Option<i64>,
+    pub workspace_id: Option<String>,
 }
 
 /// One state-changing operation on an existing task.

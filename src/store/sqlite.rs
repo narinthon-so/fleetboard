@@ -932,7 +932,19 @@ impl Backend for SqliteBackend {
                         req.loc.head.clone(),
                     )
                 };
-                insert_claim(tx, id, new_claimant.id, &host, &cwd, branch, base, ctx)?;
+                insert_claim(
+                    tx,
+                    id,
+                    new_claimant.id,
+                    &host,
+                    &cwd,
+                    branch,
+                    base,
+                    req.workspace_id
+                        .clone()
+                        .or_else(|| old.workspace_id.clone()),
+                    ctx,
+                )?;
                 bump(tx, id, ctx)?;
                 let is_delegated = !actor.is_human() && tx_has_delegation(tx, actor.id, "steal")?;
                 let mut stolen_data = json!({ "from": old.actor.id, "to": new_claimant.id });
@@ -984,6 +996,7 @@ impl Backend for SqliteBackend {
                 &req.loc.cwd,
                 req.loc.branch.clone(),
                 req.loc.head.clone(),
+                req.workspace_id.clone(),
                 ctx,
             )?;
             set_status(tx, id, next, ctx)?;
@@ -1395,13 +1408,14 @@ fn insert_claim(
     cwd: &str,
     branch: Option<String>,
     base: Option<String>,
+    workspace_id: Option<String>,
     ctx: &Ctx,
 ) -> Result<()> {
     let now = ts(ctx.now);
     tx.execute(
-        "INSERT INTO claims (task_id, actor_id, host, cwd, branch, base_commit, claimed_at, last_activity) \
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)",
-        params![task_id, actor_id, host, cwd, branch, base, now],
+        "INSERT INTO claims (task_id, actor_id, host, cwd, branch, base_commit, workspace_id, claimed_at, last_activity) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8)",
+        params![task_id, actor_id, host, cwd, branch, base, workspace_id, now],
     )?;
     Ok(())
 }
@@ -1493,6 +1507,7 @@ mod tests {
             for_actor: None,
             loc: loc(),
             scope_project: None,
+            workspace_id: None,
         }
     }
 
