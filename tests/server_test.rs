@@ -455,8 +455,18 @@ async fn test_cli_serve_subcommand_prints_token_and_serves() {
     let mut reader = std::io::BufReader::new(stdout);
     let mut line = String::new();
     std::io::BufRead::read_line(&mut reader, &mut line).unwrap();
-
     let json_val: Value = serde_json::from_str(&line).expect("must output valid JSON");
+
+    // When this test runs from an agent-shaped shell (e.g. an agent-driven QA
+    // run), the serve guard must refuse to start; a clean human shell may serve.
+    if fleetboard::identity::chain_has_agent_marker(&fleetboard::identity::process_chain()) {
+        assert_eq!(json_val["v"], 1);
+        assert_eq!(json_val["ok"], false);
+        assert_eq!(json_val["error"]["code"], "HUMAN_ONLY");
+        let _ = child.wait();
+        return;
+    }
+
     assert_eq!(json_val["v"], 1);
     assert_eq!(json_val["ok"], true);
     let port = json_val["data"]["port"].as_u64().unwrap() as u16;

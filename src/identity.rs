@@ -192,6 +192,11 @@ fn find_known_agent_in_chain(chain: &[ProcInfo]) -> Option<(&ProcInfo, &'static 
     None
 }
 
+/// True when any ancestor process is a recognised agent binary.
+pub fn chain_has_agent_marker(chain: &[ProcInfo]) -> bool {
+    find_known_agent_in_chain(chain).is_some()
+}
+
 /// Human caller (external_id "human") if no rule 1-3 marker present, else Err.
 pub fn resolve_human(
     env: &dyn Fn(&str) -> Option<String>,
