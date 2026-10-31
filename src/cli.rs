@@ -422,7 +422,7 @@ fn serve_guard(
 
 fn serve_cmd(cli: &Cli, home: &Path, port: u16) -> Result<Out> {
     let env = |k: &str| std::env::var(k).ok();
-    serve_guard(cli.as_human, &env, &identity::process_chain())?;
+    serve_guard(cli.as_human, &env, &proc_chain())?;
     let token = crate::server::auth::generate_random_token();
     let bind_addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
     let rt = tokio::runtime::Builder::new_multi_thread()

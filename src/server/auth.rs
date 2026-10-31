@@ -77,9 +77,13 @@ pub async fn auth_middleware(
         let is_authenticated = match session_id {
             Some(id) => {
                 // Guard against lock poisoning and drop expired sessions lazily.
+                // Valid requests extend the session (sliding TTL), so an actively
+                // used board never hits the daily single-token lockout.
                 match state.sessions.write() {
                     Ok(mut sessions) => {
-                        if session_is_valid(&sessions, &id, Instant::now()) {
+                        let now = Instant::now();
+                        if session_is_valid(&sessions, &id, now) {
+                            sessions.insert(id.clone(), now + SESSION_TTL);
                             true
                         } else {
                             sessions.remove(&id);
@@ -165,7 +169,23 @@ pub async fn login_handler(
             .into_response();
     };
 
-    let mut token_guard = state.one_time_token.lock().unwrap();
+    let mut token_guard = match state.one_time_token.lock() {
+        Ok(g) => g,
+        Err(_) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                axum::Json(json!({
+                    "v": 1,
+                    "ok": false,
+                    "error": {
+                        "code": "INTERNAL",
+                        "message": "auth store unavailable"
+                    }
+                })),
+            )
+                .into_response();
+        }
+    };
     if let Some(valid_token) = token_guard.as_ref()
         && constant_time_eq(valid_token, &payload.token)
     {
@@ -176,6 +196,21 @@ pub async fn login_handler(
         let session_id = generate_random_token();
         if let Ok(mut sessions) = state.sessions.write() {
             sessions.insert(session_id.clone(), Instant::now() + SESSION_TTL);
+        } else {
+            // Poisoned lock: the one-time token is already spent, so fail
+            // instead of returning a cookie that no code will honor.
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                axum::Json(json!({
+                    "v": 1,
+                    "ok": false,
+                    "error": {
+                        "code": "INTERNAL",
+                        "message": "session store unavailable"
+                    }
+                })),
+            )
+                .into_response();
         }
 
         let cookie_header = format!(

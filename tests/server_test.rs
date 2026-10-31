@@ -446,6 +446,7 @@ async fn test_cli_serve_subcommand_prints_token_and_serves() {
         .env_clear()
         .env("PATH", "/usr/bin:/bin")
         .env("FB_HOME", env.home.path())
+        .env("FB_TEST_CHAIN", "")
         .args(["--json", "--as-human", "serve", "--port", "0"])
         .stdout(std::process::Stdio::piped())
         .spawn()
@@ -455,18 +456,8 @@ async fn test_cli_serve_subcommand_prints_token_and_serves() {
     let mut reader = std::io::BufReader::new(stdout);
     let mut line = String::new();
     std::io::BufRead::read_line(&mut reader, &mut line).unwrap();
+
     let json_val: Value = serde_json::from_str(&line).expect("must output valid JSON");
-
-    // When this test runs from an agent-shaped shell (e.g. an agent-driven QA
-    // run), the serve guard must refuse to start; a clean human shell may serve.
-    if fleetboard::identity::chain_has_agent_marker(&fleetboard::identity::process_chain()) {
-        assert_eq!(json_val["v"], 1);
-        assert_eq!(json_val["ok"], false);
-        assert_eq!(json_val["error"]["code"], "HUMAN_ONLY");
-        let _ = child.wait();
-        return;
-    }
-
     assert_eq!(json_val["v"], 1);
     assert_eq!(json_val["ok"], true);
     let port = json_val["data"]["port"].as_u64().unwrap() as u16;
@@ -487,6 +478,23 @@ async fn test_cli_serve_subcommand_prints_token_and_serves() {
     // Clean up child process
     let _ = child.kill();
     let _ = child.wait();
+}
+
+#[tokio::test]
+async fn test_serve_is_refused_for_agents() {
+    let env = Env::new();
+    let child = std::process::Command::new(assert_cmd::cargo::cargo_bin("fb"))
+        .env_clear()
+        .env("PATH", "/usr/bin:/bin")
+        .env("FB_HOME", env.home.path())
+        .env("FB_TEST_CHAIN", "bash,codex,node")
+        .args(["--json", "--as-human", "serve", "--port", "0"])
+        .output()
+        .unwrap();
+    assert_eq!(child.status.code(), Some(4));
+    let v: Value = serde_json::from_slice(&child.stdout).expect("must output valid JSON");
+    assert_eq!(v["ok"], false);
+    assert_eq!(v["error"]["code"], "HUMAN_ONLY");
 }
 
 #[test]

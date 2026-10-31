@@ -483,6 +483,27 @@ fn require_claimant(task: &TaskRow, actor: &Actor, what: &str) -> Result<()> {
     )))
 }
 
+/// Dependency graph edits need the human (board owner), the task's claimant, or
+/// the task's creator while it is still a draft. Agent-filed tasks land as
+/// drafts with no chance to set blockers, so the creator keeps control of
+/// ordering until a human promotes the task.
+fn require_dep_editor(task: &TaskRow, actor: &Actor) -> Result<()> {
+    if actor.role() == Role::Human
+        || is_claimant(task, actor)
+        || (task.status == Status::Draft && task.created_by.id == actor.id)
+    {
+        return Ok(());
+    }
+    let held = match &task.claim {
+        Some(c) => format!("claimed by {}", c.actor.label),
+        None => "not claimed".to_string(),
+    };
+    Err(FbError::NotClaimant(format!(
+        "only a human, the claimant, or the creator of a draft can edit dependencies of {} ({held})",
+        fmt_id(task.id)
+    )))
+}
+
 fn non_empty(s: &str, what: &str) -> Result<()> {
     if s.trim().is_empty() {
         return Err(FbError::Usage(format!("{what} must not be empty")));
@@ -1176,7 +1197,7 @@ impl Backend for SqliteBackend {
 
     fn dep_add(&self, actor: &Actor, task: i64, blocker: i64, ctx: &Ctx) -> Result<TaskRow> {
         self.write(|tx| {
-            require_claimant(&load_task(tx, task)?, actor, "edit dependencies of")?;
+            require_dep_editor(&load_task(tx, task)?, actor)?;
             load_task(tx, blocker)?;
             if task == blocker {
                 return Err(FbError::DepCycle(format!(
@@ -1218,7 +1239,7 @@ impl Backend for SqliteBackend {
 
     fn dep_rm(&self, actor: &Actor, task: i64, blocker: i64, ctx: &Ctx) -> Result<TaskRow> {
         self.write(|tx| {
-            require_claimant(&load_task(tx, task)?, actor, "edit dependencies of")?;
+            require_dep_editor(&load_task(tx, task)?, actor)?;
             let n = tx.execute(
                 "DELETE FROM deps WHERE task_id = ?1 AND blocker_id = ?2",
                 params![task, blocker],
@@ -1963,6 +1984,29 @@ mod tests {
         // The human (board owner) may always edit.
         db.dep_add(&h, a, b, &ctx()).unwrap();
         db.dep_rm(&h, a, b, &ctx()).unwrap();
+    }
+
+    #[test]
+    fn dep_creator_edits_own_draft() {
+        let db = SqliteBackend::open_in_memory().unwrap();
+        let creator = agent(&db, "creator");
+        let other = agent(&db, "other");
+        let d = db
+            .add_task(&creator, &new_task("draft-a"), &ctx())
+            .unwrap()
+            .id;
+        let b = db
+            .add_task(&creator, &new_task("draft-b"), &ctx())
+            .unwrap()
+            .id;
+        // The creator may wire up its own draft even though nothing is claimed.
+        db.dep_add(&creator, d, b, &ctx()).unwrap();
+        db.dep_rm(&creator, d, b, &ctx()).unwrap();
+        // A different agent cannot touch a draft it did not create.
+        assert_eq!(
+            db.dep_add(&other, d, b, &ctx()).unwrap_err().code(),
+            "NOT_CLAIMANT"
+        );
     }
 
     #[test]
