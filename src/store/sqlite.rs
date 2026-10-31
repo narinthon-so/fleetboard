@@ -1176,7 +1176,7 @@ impl Backend for SqliteBackend {
 
     fn dep_add(&self, actor: &Actor, task: i64, blocker: i64, ctx: &Ctx) -> Result<TaskRow> {
         self.write(|tx| {
-            load_task(tx, task)?;
+            require_claimant(&load_task(tx, task)?, actor, "edit dependencies of")?;
             load_task(tx, blocker)?;
             if task == blocker {
                 return Err(FbError::DepCycle(format!(
@@ -1218,7 +1218,7 @@ impl Backend for SqliteBackend {
 
     fn dep_rm(&self, actor: &Actor, task: i64, blocker: i64, ctx: &Ctx) -> Result<TaskRow> {
         self.write(|tx| {
-            load_task(tx, task)?;
+            require_claimant(&load_task(tx, task)?, actor, "edit dependencies of")?;
             let n = tx.execute(
                 "DELETE FROM deps WHERE task_id = ?1 AND blocker_id = ?2",
                 params![task, blocker],
@@ -1937,6 +1937,32 @@ mod tests {
         db.dep_rm(&h, b, a, &ctx()).unwrap();
         assert_eq!(db.ready(None).unwrap()[0].id, b);
         assert_eq!(db.dep_rm(&h, b, a, &ctx()).unwrap_err().code(), "NOT_FOUND");
+    }
+
+    #[test]
+    fn dep_add_requires_claimant() {
+        let db = SqliteBackend::open_in_memory().unwrap();
+        let h = human(&db);
+        let a = db.add_task(&h, &new_task("a"), &ctx()).unwrap().id;
+        let b = db.add_task(&h, &new_task("b"), &ctx()).unwrap().id;
+        // An agent that does not hold the claim cannot edit the dependency graph.
+        let agent = agent(&db, "agent-1");
+        assert_eq!(
+            db.dep_add(&agent, a, b, &ctx()).unwrap_err().code(),
+            "NOT_CLAIMANT"
+        );
+        assert_eq!(
+            db.dep_rm(&agent, a, b, &ctx()).unwrap_err().code(),
+            "NOT_CLAIMANT"
+        );
+        // The task's claimant may edit dependencies.
+        let claimed = db.claim(&agent, &claim_req(Some(a)), &ctx()).unwrap();
+        assert_eq!(claimed.id, a);
+        db.dep_add(&agent, a, b, &ctx()).unwrap();
+        db.dep_rm(&agent, a, b, &ctx()).unwrap();
+        // The human (board owner) may always edit.
+        db.dep_add(&h, a, b, &ctx()).unwrap();
+        db.dep_rm(&h, a, b, &ctx()).unwrap();
     }
 
     #[test]

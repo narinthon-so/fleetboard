@@ -446,7 +446,7 @@ async fn test_cli_serve_subcommand_prints_token_and_serves() {
         .env_clear()
         .env("PATH", "/usr/bin:/bin")
         .env("FB_HOME", env.home.path())
-        .args(["--json", "serve", "--port", "0"])
+        .args(["--json", "--as-human", "serve", "--port", "0"])
         .stdout(std::process::Stdio::piped())
         .spawn()
         .unwrap();

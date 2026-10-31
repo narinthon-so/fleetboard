@@ -1,7 +1,9 @@
 //! Authentication, session cookies, and X-Requested-With verification.
 
+use std::collections::HashMap;
 use std::fmt::Write;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use axum::extract::{Request, State};
 use axum::http::{self, StatusCode};
@@ -12,6 +14,15 @@ use serde_json::json;
 use subtle::ConstantTimeEq;
 
 use super::AppState;
+
+/// Session lifetime. After this the cookie is rejected and must be re-obtained
+/// from a fresh `fb serve` one-time token.
+pub const SESSION_TTL: Duration = Duration::from_secs(60 * 60 * 24);
+
+/// A session id is valid only while present and not past its expiry.
+fn session_is_valid(sessions: &HashMap<String, Instant>, id: &str, now: Instant) -> bool {
+    sessions.get(id).is_some_and(|exp| *exp > now)
+}
 
 /// Generates a cryptographically secure token using the OS CSPRNG (32 bytes, 64 hex chars).
 pub fn generate_random_token() -> String {
@@ -64,7 +75,20 @@ pub async fn auth_middleware(
             .and_then(extract_session_id);
 
         let is_authenticated = match session_id {
-            Some(id) => state.sessions.read().unwrap().contains(&id),
+            Some(id) => {
+                // Guard against lock poisoning and drop expired sessions lazily.
+                match state.sessions.write() {
+                    Ok(mut sessions) => {
+                        if session_is_valid(&sessions, &id, Instant::now()) {
+                            true
+                        } else {
+                            sessions.remove(&id);
+                            false
+                        }
+                    }
+                    Err(_) => false,
+                }
+            }
             None => false,
         };
 
@@ -150,9 +174,14 @@ pub async fn login_handler(
 
         // Generate a secure session id
         let session_id = generate_random_token();
-        state.sessions.write().unwrap().insert(session_id.clone());
+        if let Ok(mut sessions) = state.sessions.write() {
+            sessions.insert(session_id.clone(), Instant::now() + SESSION_TTL);
+        }
 
-        let cookie_header = format!("fb_session={session_id}; HttpOnly; SameSite=Strict; Path=/");
+        let cookie_header = format!(
+            "fb_session={session_id}; HttpOnly; SameSite=Strict; Path=/; Max-Age={}",
+            SESSION_TTL.as_secs()
+        );
 
         return (
             StatusCode::OK,
@@ -188,8 +217,9 @@ pub async fn logout_handler(State(state): State<Arc<AppState>>, req: Request) ->
     if let Some(session_id) = cookie_header
         .and_then(|h| h.to_str().ok())
         .and_then(extract_session_id)
+        && let Ok(mut sessions) = state.sessions.write()
     {
-        state.sessions.write().unwrap().remove(&session_id);
+        sessions.remove(&session_id);
     }
 
     let cookie_header = "fb_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0";
@@ -238,5 +268,16 @@ mod tests {
         assert!(!constant_time_eq(&t1, &t2));
         assert!(!constant_time_eq(&t1, &t1[..32]));
         assert!(!constant_time_eq(&t1, ""));
+    }
+
+    #[test]
+    fn sessions_expire() {
+        let mut sessions = HashMap::new();
+        let now = Instant::now();
+        sessions.insert("live".to_string(), now + Duration::from_secs(60));
+        sessions.insert("expired".to_string(), now - Duration::from_secs(1));
+        assert!(session_is_valid(&sessions, "live", now));
+        assert!(!session_is_valid(&sessions, "expired", now));
+        assert!(!session_is_valid(&sessions, "missing", now));
     }
 }
