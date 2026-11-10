@@ -362,7 +362,8 @@ pub fn default_branch(cwd: &Path) -> Option<String> {
 
 /// Base commit for a claim moved to the checkout at `cwd`: the old base when
 /// it is already an ancestor of HEAD, else the fork point of HEAD and the old
-/// base, else HEAD. Keeps the commit count of work done on the new branch.
+/// base, else the old base unchanged (HEAD when there was none). Keeps the
+/// commit count of work done on the new branch.
 pub fn relocation_base(cwd: &Path, old_base: Option<&str>) -> Option<String> {
     let rev = |args: &[&str]| {
         run_git(cwd, args)
@@ -379,7 +380,10 @@ pub fn relocation_base(cwd: &Path, old_base: Option<&str>) -> Option<String> {
     if is_ancestor {
         return Some(old.to_string());
     }
-    rev(&["merge-base", "HEAD", old]).or(Some(head))
+    // No common ancestor found (e.g. the old base is missing from a shallow
+    // clone): keep the old base so evidence falls back to counting commits
+    // since the claim, instead of dropping the work already done.
+    rev(&["merge-base", "HEAD", old]).or_else(|| Some(old.to_string()))
 }
 
 /// Last commit time on the given branch (committer date).

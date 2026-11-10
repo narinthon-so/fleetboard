@@ -958,6 +958,7 @@ pub fn dispatch(s: &Session, cmd: &Cmd) -> Result<Out> {
                     .as_ref()
                     .map_or(String::new(), |b| format!(" ({b})")),
             );
+            let mut warnings: Vec<String> = Vec::new();
             // Evidence is read from the claim's branch, so a claim taken from
             // another task's branch reports the wrong commits. Claiming on the
             // default branch is the normal start (the claim follows the new
@@ -970,13 +971,17 @@ pub fn dispatch(s: &Session, cmd: &Cmd) -> Result<Out> {
                 && b != "main"
                 && b != "master"
             {
-                text.push_str(&format!(
-                    "warning: branch {b} is not {expected}; evidence will be read from {b}. \
-                     Switch to {expected} and run `fb claim {}` again to move the claim.\n",
+                let w = format!(
+                    "branch {b} is not {expected}; evidence will be read from {b}. \
+                     Switch to {expected} and run `fb claim {}` again to move the claim",
                     fmt_id(t.id)
-                ));
+                );
+                text.push_str(&format!("warning: {w}\n"));
+                warnings.push(w);
             }
-            task_out(s, &t, text)
+            let mut out = task_out(s, &t, text)?;
+            out.data["warnings"] = json!(warnings);
+            Ok(out)
         }
         Cmd::Plan { id, text } => {
             let id = parse_id(id)?;

@@ -214,7 +214,9 @@ fn reclaim_moves_a_claim_taken_on_the_wrong_branch() {
     e.git(&["checkout", "-q", "-b", "other"]);
     e.write("o.txt", "other\n");
     e.commit("other work");
-    e.ok(A, &["claim", &a]);
+    let d = e.ok(A, &["claim", &a]);
+    let w = d["warnings"][0].as_str().unwrap_or_default();
+    assert!(w.contains(&format!("branch other is not task/{a}")), "{d}");
     let r = e.text(A, &["claim", &b]);
     assert!(
         r.stdout
@@ -224,7 +226,8 @@ fn reclaim_moves_a_claim_taken_on_the_wrong_branch() {
     );
 
     e.git(&["checkout", "-q", "main"]);
-    e.git(&["checkout", "-q", "-b", "task/A"]);
+    let task_branch = format!("task/{a}");
+    e.git(&["checkout", "-q", "-b", &task_branch]);
     e.write("a.txt", "A\n");
     e.commit("implement A");
     e.write("a2.txt", "A2\n");
@@ -232,7 +235,8 @@ fn reclaim_moves_a_claim_taken_on_the_wrong_branch() {
 
     // Re-claiming your own task re-anchors it here, base = fork point.
     let d = e.ok(A, &["claim", &a]);
-    assert_eq!(d["task"]["claim"]["branch"], "task/A");
+    assert_eq!(d["warnings"], json!([]));
+    assert_eq!(d["task"]["claim"]["branch"], task_branch.as_str());
     assert_eq!(d["task"]["claim"]["base_commit"], main_head.as_str());
     // The other claim stays where it was.
     let d = e.ok(A, &["show", &b]);
