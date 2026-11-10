@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { loginWithToken } from '../lib/api';
-import { KeyRound, AlertCircle, ArrowRight } from 'lucide-react';
+import { AlertCircle, ArrowRight } from 'lucide-react';
+import { BrandLogo } from './BrandLogo';
 
 interface LoginScreenProps {
   onSuccess: () => void;
@@ -39,11 +40,9 @@ export function LoginScreen({ onSuccess }: LoginScreenProps) {
     <div className="min-h-screen flex items-center justify-center bg-[var(--background)] p-4">
       <div className="w-full max-w-md p-6 rounded-lg border border-[var(--border)] bg-[var(--card)] shadow-lg flex flex-col gap-5">
         <div className="flex flex-col gap-1.5 text-center items-center">
-          <div className="w-10 h-10 rounded-full bg-[var(--muted)] flex items-center justify-center text-[var(--primary)] mb-1">
-            <KeyRound className="w-5 h-5" />
-          </div>
-          <h1 className="text-base font-semibold tracking-tight text-[var(--foreground)] font-mono">
-            fleetboard auth
+          <h1 className="mb-2">
+            <BrandLogo className="w-[240px] max-w-full" />
+            <span className="sr-only"> auth</span>
           </h1>
           <p className="text-xs text-[var(--muted-foreground)] max-w-xs">
             Enter the one-time token printed in your terminal by{' '}

@@ -1,0 +1,24 @@
+{
+  "viewBox": [
+    0,
+    0,
+    256,
+    256
+  ],
+  "main": "M40 40H216L176 80H40ZM40 104H176L136 144H80V216H40Z",
+  "reversed": "M41 41H213L175 79H41ZM41 105H173L135 143H79V215H41Z",
+  "small": "M32 32H224L176 80H32ZM32 112H192L144 160H80V224H32Z",
+  "wordmark_font": "DejaVu Sans Mono Bold",
+  "wordmark_gap_font_units": [
+    160,
+    140,
+    156,
+    160,
+    188,
+    130,
+    148,
+    160,
+    108
+  ],
+  "horizontal_gap": 56
+}

@@ -1,0 +1,36 @@
+[
+  {
+    "check": "lint",
+    "command": [
+      "pnpm",
+      "lint"
+    ],
+    "exit_code": 0
+  },
+  {
+    "check": "typecheck",
+    "command": [
+      "pnpm",
+      "typecheck"
+    ],
+    "exit_code": 0
+  },
+  {
+    "check": "keyboard",
+    "command": [
+      "pnpm",
+      "exec",
+      "node",
+      "scripts/test-keyboard.js"
+    ],
+    "exit_code": 0
+  },
+  {
+    "check": "brand",
+    "command": [
+      "node",
+      "/tmp/fb-107-ci-fix/check-brand.mjs"
+    ],
+    "exit_code": 0
+  }
+]

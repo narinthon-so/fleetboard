@@ -1,0 +1,30 @@
+{
+  "brand":"fleetboard",
+  "tagline":"One board for your coding agents.",
+  "brief":"A shared task board for one person operating coding agents across repositories. The identity should be clear in a browser tab, restrained in a dashboard, and at home in developer documentation.",
+  "adjectives":["calm","precise","capable","independent"],
+  "criteria":"The selected F keeps two separate work streams in one compact initial. Works in a single colour, with an adjusted small-size drawing and a lighter reversed symbol.",
+  "industry":"software",
+  "mockups":["readme","app-icon","website","terminal","sticker","favicon-tab"],
+  "nav":["Docs","GitHub"],
+  "brand_color":"#B84A2A",
+  "tile_color":"#B84A2A",
+  "greyscale":false,
+  "final":true,
+  "deck_title":"Parallel F identity",
+  "concepts":[{
+    "name":"Parallel F",
+    "symbol":"../digital/fleetboard-symbol-color.svg",
+    "lockup":"../digital/fleetboard-horizontal-color.svg",
+    "stacked":"../digital/fleetboard-stacked-color.svg",
+    "avatar":"../digital/fleetboard-symbol-small-ink.svg",
+    "symbol_on_tile":"../digital/fleetboard-symbol-white.svg",
+    "symbol_on_dark":"../digital/fleetboard-symbol-white.svg",
+    "lockup_on_dark":"../digital/fleetboard-horizontal-white.svg",
+    "stacked_on_tile":"../digital/fleetboard-stacked-white.svg",
+    "idea":"Independent work streams resolve into one clear F.",
+    "rationale":["The selected silhouette is retained: two pieces, one 24-unit channel, exact 45-degree terminals.","Burnt orange provides a warm signature beside dark ink and off-white.","The outlined monospace wordmark uses custom spacing; the small cut aligns its bars to a 16-pixel grid."]
+  }],
+  "recommendation":"The identity is ready for use as an asset kit. Mockups illustrate placement; they do not represent changes to the application.",
+  "next_steps":["Use the horizontal colour artwork on light surfaces and the white artwork on dark surfaces.","Use the supplied small cut below 24 px, and copy the web folder as a set when adopting the icons.","Review the usage guide before print production; spot colours and trademark clearance are not certified."]
+}

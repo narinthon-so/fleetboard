@@ -1,0 +1,2 @@
+ WARN  Issue while reading "/home/nsubuntu22/.npmrc". Failed to replace env in config: ${NPM_TOKEN}
+PASS: j/k select, Enter opens, Escape closes and preserves selection

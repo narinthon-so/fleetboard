@@ -1,0 +1,15 @@
+ WARN  Issue while reading "/home/nsubuntu22/.npmrc". Failed to replace env in config: ${NPM_TOKEN}
+
+> web@1.0.0 build /tmp/fb-107-ci-fix/clean-export/web
+> tsc && vite build
+
+vite v8.3.5 building client environment for production...
+transforming...
+✓ 2157 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                   1.07 kB │ gzip:   0.53 kB
+dist/assets/index-wc-9dy6C.css   48.23 kB │ gzip:   8.30 kB
+dist/assets/index-rG68YVIP.js   490.77 kB │ gzip: 146.19 kB
+
+✓ built in 322ms

@@ -1,0 +1,41 @@
+[
+  {
+    "command": [
+      "git",
+      "diff",
+      "--exit-code",
+      "web/dist"
+    ],
+    "exit_code": 0,
+    "output": ""
+  },
+  {
+    "command": [
+      "git",
+      "status",
+      "--porcelain",
+      "web/dist"
+    ],
+    "exit_code": 0,
+    "output": ""
+  },
+  {
+    "command": [
+      "diff",
+      "-qr",
+      "web/dist",
+      "/tmp/fb-107-ci-fix/clean-export/web/dist"
+    ],
+    "exit_code": 0,
+    "output": ""
+  },
+  {
+    "command": [
+      "git",
+      "diff",
+      "--check"
+    ],
+    "exit_code": 0,
+    "output": ""
+  }
+]

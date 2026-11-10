@@ -1,0 +1,61 @@
+Application commit: 894ccd7
+Checkout HEAD: 9cd057d1b0eb78a143073c2b22e6c3166645dd1e
+All board test data isolated in a temporary FB_HOME.
+
+$ pnpm --dir web typecheck
+ WARN  Issue while reading "/home/nsubuntu22/.npmrc". Failed to replace env in config: ${NPM_TOKEN}
+
+> web@1.0.0 typecheck /home/nsubuntu22/code/fleetboard/web
+> tsc --noEmit
+
+
+EXIT 0; elapsed 3.31s
+
+$ pnpm --dir web lint
+ WARN  Issue while reading "/home/nsubuntu22/.npmrc". Failed to replace env in config: ${NPM_TOKEN}
+
+> web@1.0.0 lint /home/nsubuntu22/code/fleetboard/web
+> eslint .
+
+
+EXIT 0; elapsed 3.84s
+
+$ pnpm --dir web build
+ WARN  Issue while reading "/home/nsubuntu22/.npmrc". Failed to replace env in config: ${NPM_TOKEN}
+
+> web@1.0.0 build /home/nsubuntu22/code/fleetboard/web
+> tsc && vite build
+
+vite v8.3.5 building client environment for production...
+transforming...
+✓ 2157 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                   1.07 kB │ gzip:   0.53 kB
+dist/assets/index-CMZvDXEI.css   48.29 kB │ gzip:   8.31 kB
+dist/assets/index-CtJGSoVQ.js   490.77 kB │ gzip: 146.19 kB
+
+✓ built in 386ms
+
+EXIT 0; elapsed 3.95s
+
+$ cargo test --test server_test -- test_serves_embedded_web_ui test_login_then_board_and_task_ok
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.19s
+     Running tests/server_test.rs (target/debug/deps/server_test-b59a6d62e252ec4e)
+
+running 2 tests
+test test_serves_embedded_web_ui ... ok
+test test_login_then_board_and_task_ok ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 18 filtered out; finished in 0.10s
+
+
+EXIT 0; elapsed 0.34s
+
+$ cargo fmt --check
+
+EXIT 0; elapsed 0.22s
+
+$ git diff --check
+
+EXIT 0; elapsed 0.01s

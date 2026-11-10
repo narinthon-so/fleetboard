@@ -419,6 +419,49 @@ async fn test_serves_embedded_web_ui() {
     let body = resp.text().await.unwrap();
     assert!(body.contains("<!DOCTYPE html>"));
 
+    // Branding must be served as assets, without authentication or SPA fallback.
+    for (path, content_type) in [
+        ("/favicon.svg", "image/svg+xml"),
+        ("/favicon.ico", "image/"),
+        ("/apple-touch-icon.png", "image/png"),
+        ("/brand/fleetboard-horizontal-color.svg", "image/svg+xml"),
+        ("/brand/fleetboard-horizontal-white.svg", "image/svg+xml"),
+    ] {
+        let resp = client.get(format!("{base}{path}")).send().await.unwrap();
+        assert_eq!(resp.status(), 200, "{path}");
+        assert!(
+            resp.headers()["content-type"]
+                .to_str()
+                .unwrap()
+                .starts_with(content_type)
+        );
+        assert!(!resp.bytes().await.unwrap().is_empty(), "{path}");
+    }
+    let manifest_url = reqwest::Url::parse(&format!("{base}/site.webmanifest")).unwrap();
+    let resp = client.get(manifest_url.clone()).send().await.unwrap();
+    assert_eq!(resp.status(), 200);
+    assert!(
+        resp.headers()["content-type"]
+            .to_str()
+            .unwrap()
+            .contains("json")
+    );
+    let manifest: Value = resp.json().await.unwrap();
+    let icons = manifest["icons"].as_array().unwrap();
+    assert!(!icons.is_empty());
+    for icon in icons {
+        let url = manifest_url.join(icon["src"].as_str().unwrap()).unwrap();
+        let resp = client.get(url).send().await.unwrap();
+        assert_eq!(resp.status(), 200);
+        assert_eq!(resp.headers()["content-type"], "image/png");
+        assert!(
+            resp.bytes()
+                .await
+                .unwrap()
+                .starts_with(b"\x89PNG\r\n\x1a\n")
+        );
+    }
+
     // GET /index.html -> 200 OK
     let resp = client
         .get(format!("{base}/index.html"))
