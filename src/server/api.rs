@@ -257,6 +257,14 @@ fn task_json(
 /// GET /api/board
 /// Returns tasks with derived states + claim + evidence line, projects, instances, actors.
 pub async fn board_handler(State(state): State<Arc<AppState>>) -> Response {
+    // Building the board shells out to git, gh and the runtime adapter; keep
+    // that off the async workers.
+    tokio::task::spawn_blocking(move || board_blocking(&state))
+        .await
+        .unwrap_or_else(internal_error)
+}
+
+fn board_blocking(state: &AppState) -> Response {
     let db = match SqliteBackend::open(&state.db_path) {
         Ok(db) => db,
         Err(e) => return internal_error(e),
@@ -273,8 +281,19 @@ pub async fn board_handler(State(state): State<Arc<AppState>>) -> Response {
         Err(e) => return internal_error(e),
     };
 
+    let claims: Vec<Option<ClaimRow>> = tasks.iter().map(|t| latest_claim(&db, t)).collect();
+    if cfg.gh {
+        let pairs: Vec<_> = claims
+            .iter()
+            .flatten()
+            .filter(|c| c.host == state.host && c.base_commit.is_some())
+            .filter_map(|c| Some((std::path::PathBuf::from(&c.cwd), c.branch.clone()?)))
+            .collect();
+        gitinfo::prefetch_prs(&pairs);
+    }
+
     let mut task_values = Vec::new();
-    for t in &tasks {
+    for (t, claim) in tasks.iter().zip(claims) {
         let d = derive_for(
             state.adapter.as_ref(),
             &db,
@@ -284,7 +303,7 @@ pub async fn board_handler(State(state): State<Arc<AppState>>) -> Response {
             cfg.stale_after,
             t,
         );
-        let ev = latest_claim(&db, t).map(|c| live_evidence(&db, &state.host, cfg.gh, &c, now));
+        let ev = claim.map(|c| live_evidence(&db, &state.host, cfg.gh, &c, now));
         task_values.push(task_json(state.adapter.as_ref(), t, &d, ev.as_ref()));
     }
 

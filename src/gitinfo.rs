@@ -1,8 +1,21 @@
 //! Git repository metadata, project keys, and live claim evidence (DESIGN.md D4, D11).
 
 use chrono::{DateTime, Utc};
+use std::collections::{HashMap, HashSet};
+use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
+
+/// How long a `gh pr view` result (including "no PR") is reused. The board
+/// refetches on every change event, so without this each refresh paid one
+/// network round trip per claimed task.
+const GH_CACHE_TTL: Duration = Duration::from_secs(60);
+/// A `gh` call slower than this is killed and treated as "no PR info".
+const GH_TIMEOUT: Duration = Duration::from_secs(8);
+/// Concurrent `gh` processes during [`prefetch_prs`].
+const GH_PARALLEL: usize = 8;
 
 /// Normalise a git remote URL into a project key (DESIGN.md "Projects and instances").
 ///
@@ -361,30 +374,120 @@ struct GhPrJson {
     status_check_rollup: Option<serde_json::Value>,
 }
 
+type PrKey = (PathBuf, String);
+type PrCache = HashMap<PrKey, (Instant, Option<PrInfo>)>;
+
+fn pr_cache() -> &'static Mutex<PrCache> {
+    static CACHE: OnceLock<Mutex<PrCache>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn cached_pr(key: &PrKey) -> Option<Option<PrInfo>> {
+    let cache = pr_cache().lock().unwrap_or_else(|e| e.into_inner());
+    cache
+        .get(key)
+        .filter(|(at, _)| at.elapsed() < GH_CACHE_TTL)
+        .map(|(_, pr)| pr.clone())
+}
+
+fn store_pr(key: PrKey, pr: Option<PrInfo>) {
+    let mut cache = pr_cache().lock().unwrap_or_else(|e| e.into_inner());
+    cache.retain(|_, (at, _)| at.elapsed() < GH_CACHE_TTL);
+    cache.insert(key, (Instant::now(), pr));
+}
+
+/// Whether `gh` runs at all; checked once per process.
+fn gh_available() -> bool {
+    static AVAILABLE: OnceLock<bool> = OnceLock::new();
+    *AVAILABLE
+        .get_or_init(|| run_with_timeout(Command::new("gh").arg("--version"), GH_TIMEOUT).is_some())
+}
+
+/// Run a command, capturing stdout; `None` on spawn failure, non-zero exit or
+/// timeout (the child is killed).
+fn run_with_timeout(cmd: &mut Command, timeout: Duration) -> Option<Vec<u8>> {
+    let mut child = cmd
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()?;
+    // Drain stdout on a thread so a large reply cannot fill the pipe and stall
+    // the child until the timeout.
+    let mut stdout = child.stdout.take()?;
+    let reader = std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        let _ = stdout.read_to_end(&mut buf);
+        buf
+    });
+    let deadline = Instant::now() + timeout;
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break Some(status),
+            Ok(None) if Instant::now() < deadline => {
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                break None;
+            }
+        }
+    };
+    let out = reader.join().ok()?;
+    status.filter(|s| s.success()).map(|_| out)
+}
+
 fn query_gh_pr(cwd: &Path, branch: &str) -> Option<PrInfo> {
-    // Check if gh is available on PATH
-    let gh_ver = Command::new("gh").arg("--version").output().ok()?;
-    if !gh_ver.status.success() {
+    let key = (cwd.to_path_buf(), branch.to_string());
+    if let Some(hit) = cached_pr(&key) {
+        return hit;
+    }
+    let pr = query_gh_pr_uncached(cwd, branch);
+    store_pr(key, pr.clone());
+    pr
+}
+
+/// Warm the PR cache for many (cwd, branch) pairs with up to `GH_PARALLEL`
+/// concurrent `gh` calls, so a following loop of [`evidence`] calls hits the
+/// cache instead of paying one network round trip per task in sequence.
+pub fn prefetch_prs(pairs: &[(PathBuf, String)]) {
+    if pairs.is_empty() || !gh_available() {
+        return;
+    }
+    let mut seen = HashSet::new();
+    let todo: Vec<&(PathBuf, String)> = pairs
+        .iter()
+        .filter(|k| seen.insert((*k).clone()) && k.0.is_dir() && cached_pr(k).is_none())
+        .collect();
+    for chunk in todo.chunks(GH_PARALLEL) {
+        std::thread::scope(|scope| {
+            for (cwd, branch) in chunk {
+                scope.spawn(move || {
+                    let pr = query_gh_pr_uncached(cwd, branch);
+                    store_pr((cwd.clone(), branch.clone()), pr);
+                });
+            }
+        });
+    }
+}
+
+fn query_gh_pr_uncached(cwd: &Path, branch: &str) -> Option<PrInfo> {
+    if !gh_available() {
         return None;
     }
-
-    let out = Command::new("gh")
-        .current_dir(cwd)
-        .args([
+    let out = run_with_timeout(
+        Command::new("gh").current_dir(cwd).args([
             "pr",
             "view",
             branch,
             "--json",
             "number,state,url,statusCheckRollup",
-        ])
-        .output()
-        .ok()?;
+        ]),
+        GH_TIMEOUT,
+    )?;
 
-    if !out.status.success() {
-        return None;
-    }
-
-    let parsed: GhPrJson = serde_json::from_slice(&out.stdout).ok()?;
+    let parsed: GhPrJson = serde_json::from_slice(&out).ok()?;
     let checks = parse_status_check_rollup(parsed.status_check_rollup);
 
     Some(PrInfo {

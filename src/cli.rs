@@ -1492,6 +1492,15 @@ fn line(s: &Session, t: &TaskRow, d: &Derived) -> String {
 fn list_out(s: &Session, tasks: Vec<TaskRow>, evidence: bool) -> Result<Out> {
     let mut text = String::new();
     let mut items = Vec::new();
+    if evidence && s.cfg.gh {
+        let pairs: Vec<_> = tasks
+            .iter()
+            .filter_map(|t| latest_claim(s, t))
+            .filter(|c| c.host == s.host && c.base_commit.is_some())
+            .filter_map(|c| Some((std::path::PathBuf::from(&c.cwd), c.branch?)))
+            .collect();
+        gitinfo::prefetch_prs(&pairs);
+    }
     for t in &tasks {
         let d = derive_for(s, t);
         text.push_str(&line(s, t, &d));
