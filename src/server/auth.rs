@@ -15,8 +15,9 @@ use subtle::ConstantTimeEq;
 
 use super::AppState;
 
-/// Session lifetime. After this the cookie is rejected and must be re-obtained
-/// from a fresh `fb serve` one-time token.
+/// Idle session lifetime. Each valid request pushes expiry this far ahead;
+/// after this long with no request the session is rejected and a fresh
+/// `fb serve` one-time token is needed.
 pub const SESSION_TTL: Duration = Duration::from_secs(60 * 60 * 24);
 
 /// A session id is valid only while present and not past its expiry.
@@ -213,10 +214,11 @@ pub async fn login_handler(
                 .into_response();
         }
 
-        let cookie_header = format!(
-            "fb_session={session_id}; HttpOnly; SameSite=Strict; Path=/; Max-Age={}",
-            SESSION_TTL.as_secs()
-        );
+        // Session cookie (no Max-Age): the browser keeps it until it closes,
+        // and the server's sliding SESSION_TTL alone decides expiry. A fixed
+        // Max-Age would drop the cookie 24h after login however active the
+        // board is, and the one-time token is already spent by then.
+        let cookie_header = format!("fb_session={session_id}; HttpOnly; SameSite=Strict; Path=/");
 
         return (
             StatusCode::OK,

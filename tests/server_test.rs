@@ -157,6 +157,18 @@ async fn test_login_then_board_and_task_ok() {
     assert!(cookie_header.contains("fb_session="));
     assert!(cookie_header.contains("HttpOnly"));
     assert!(cookie_header.contains("SameSite=Strict"));
+    // No fixed browser-side lifetime: the server's sliding TTL decides expiry.
+    // Max-Age / Expires would make the browser drop the cookie 24h after
+    // login even on an actively used board.
+    let lower = cookie_header.to_ascii_lowercase();
+    assert!(
+        !lower.contains("max-age"),
+        "login cookie must not set Max-Age: {cookie_header}"
+    );
+    assert!(
+        !lower.contains("expires"),
+        "login cookie must not set Expires: {cookie_header}"
+    );
 
     // Extract cookie value
     let cookie_val = cookie_header.split(';').next().unwrap().to_string();
