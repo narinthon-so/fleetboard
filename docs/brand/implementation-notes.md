@@ -51,10 +51,12 @@ so watch actual errors. No named profiles exist; use the discovered installed
 provider settings. Disable push in this checkout while delegated agents run;
 the original origin push configuration had no explicit pushurl (fetch URL is
 git@github.com:narinthon-so/fleetboard.git). Restore that configuration after all
-workers are idle. No remote push is part of the current scope.
+workers are idle. Pushing was outside the implementation kickoff scope; the
+later user request to open a PR authorizes the push recorded below.
 
 Completion: both workers are idle and the temporary push guard was removed;
-origin again inherits its original fetch URL for pushing. No push was performed.
+origin again inherits its original fetch URL for pushing. No push was performed
+during implementation/QA; the subsequent PR request is recorded below.
 
 ## Kickoff briefs
 
@@ -130,7 +132,22 @@ tasks directly.
 - Agy's report also lists keyboard/dependency/note-verification checks; the lead
   accepts the demonstrated browser interactions and inspected source/diff, but
   does not claim independent reruns of those additional scripts.
-- No push, PR, tag, production deployment, or final human verification is part
-  of this completion. Keep the delivery on `task/fb-107`; the QA branch can be
+- At implementation/QA completion, no push, PR, tag, production deployment, or
+  final human verification had been performed. Keep delivery on `task/fb-107`; the QA branch can be
   fast-forwarded into it because only evidence/documentation was added after
   `894ccd7`. Restore the original push configuration once both workers are idle.
+
+## Pull request — 2026-11-10
+
+- User explicitly requested: "open pr". This authorizes the branch push and PR
+  creation; final human task verification and merge remain outstanding.
+- PR [#5 — feat(brand): apply Parallel F identity](https://github.com/narinthon-so/fleetboard/pull/5).
+- Head `task/fb-107` → base `main`; branch pushed normally, no force push.
+- Last validated application/bundle commit is `14dafae`. This PR record is a
+  documentation-only follow-up; application files are unchanged.
+- Description includes design/archive scope, rollout behavior, raw validation
+  output, the mocked-browser/live-Rust coverage distinction, and a screenshot.
+- GitHub CLI's active account lacked collaborator access. Creation succeeded
+  with the already configured repository-owner credentials scoped to that
+  command; the global active account was not changed.
+- Both fb-107 and fb-108 remain Review; no merge, tag or deployment performed.
