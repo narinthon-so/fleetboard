@@ -997,6 +997,15 @@ impl Backend for SqliteBackend {
                     if !moved {
                         return Ok(task);
                     }
+                    // Review freezes the location so evidence stays bound to the
+                    // submitted work (and its snapshot stays valid).
+                    if task.status != Status::InProgress {
+                        return Err(FbError::BadTransition(format!(
+                            "{label} is in {}; its claim location is frozen. \
+                             Ask a human to reject it back to in_progress to move the claim",
+                            task.status.as_str()
+                        )));
+                    }
                     tx.execute(
                         "UPDATE claims SET host = ?1, cwd = ?2, branch = ?3, base_commit = ?4, \
                          workspace_id = COALESCE(?5, workspace_id), last_activity = ?6 WHERE id = ?7",
@@ -1914,6 +1923,28 @@ mod tests {
         assert_eq!(c.base_commit.as_deref(), Some("base2"));
         assert_eq!(c.claimed_at, first_claim.claimed_at);
         assert!(events(&db).contains(&"relocated".to_string()));
+
+        // In review the location is frozen.
+        let mut done_t = db.add_task(&h, &new_task("r"), &ctx()).unwrap();
+        db.claim(&a, &claim_req(Some(done_t.id)), &ctx()).unwrap();
+        done_t = db
+            .apply(&a, done_t.id, &Command::Done { result: None }, &ctx())
+            .unwrap();
+        assert_eq!(done_t.status, Status::Review);
+        assert_eq!(
+            db.claim(
+                &a,
+                &{
+                    let mut r = moved.clone();
+                    r.id = Some(done_t.id);
+                    r
+                },
+                &ctx()
+            )
+            .unwrap_err()
+            .code(),
+            "BAD_TRANSITION"
+        );
 
         // Someone else still cannot take it by moving.
         assert_eq!(
