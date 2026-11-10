@@ -986,7 +986,53 @@ impl Backend for SqliteBackend {
             // An active claim blocks everyone else, whatever the status (in_progress or review).
             if let Some(held) = &task.claim {
                 if held.actor.id == actor.id {
-                    return Ok(task); // already yours: claiming again is a no-op
+                    // Already yours. Same place and base: a no-op. Otherwise re-point
+                    // the claim (location and base commit), so a claim taken from the
+                    // wrong checkout can be fixed without a human release. `touch`
+                    // may already have followed the branch but never moves the base.
+                    let moved = held.host != req.loc.host
+                        || held.cwd != req.loc.cwd
+                        || held.branch != req.loc.branch
+                        || (req.loc.head.is_some() && held.base_commit != req.loc.head);
+                    if !moved {
+                        return Ok(task);
+                    }
+                    // Review freezes the location so evidence stays bound to the
+                    // submitted work (and its snapshot stays valid).
+                    if task.status != Status::InProgress {
+                        return Err(FbError::BadTransition(format!(
+                            "{label} is in {}; its claim location is frozen. \
+                             Ask a human to reject it back to in_progress to move the claim",
+                            task.status.as_str()
+                        )));
+                    }
+                    tx.execute(
+                        "UPDATE claims SET host = ?1, cwd = ?2, branch = ?3, base_commit = COALESCE(?4, base_commit), \
+                         workspace_id = COALESCE(?5, workspace_id), last_activity = ?6 WHERE id = ?7",
+                        params![
+                            req.loc.host,
+                            req.loc.cwd,
+                            req.loc.branch,
+                            req.loc.head,
+                            req.workspace_id,
+                            ts(ctx.now),
+                            held.id
+                        ],
+                    )?;
+                    tx.execute("DELETE FROM evidence_snapshots WHERE claim_id = ?1", [held.id])?;
+                    bump(tx, id, ctx)?;
+                    event(
+                        tx,
+                        Some(id),
+                        actor,
+                        "relocated",
+                        json!({
+                            "from": { "host": held.host, "cwd": held.cwd, "branch": held.branch, "base": held.base_commit },
+                            "to": { "host": req.loc.host, "cwd": req.loc.cwd, "branch": req.loc.branch, "base": req.loc.head },
+                        }),
+                        ctx,
+                    )?;
+                    return load_task(tx, id);
                 }
                 return Err(FbError::ClaimHeld(format!(
                     "{label} is claimed by {}",
@@ -1841,6 +1887,79 @@ mod tests {
         assert_eq!(t.claim.unwrap().actor.id, b.id);
         let d = db.task_detail(blocker.id).unwrap();
         assert_eq!(d.claims[1].release_reason.as_deref(), Some("stolen"));
+    }
+
+    #[test]
+    fn reclaim_from_new_location_relocates_own_claim() {
+        let db = SqliteBackend::open_in_memory().unwrap();
+        let h = human(&db);
+        let a = agent(&db, "a1");
+        let b = agent(&db, "b2");
+        let t = db.add_task(&h, &new_task("t"), &ctx()).unwrap();
+        let first = db.claim(&a, &claim_req(Some(t.id)), &ctx()).unwrap();
+        let first_claim = first.claim.unwrap();
+
+        // Same place again: still a no-op, no event.
+        db.claim(&a, &claim_req(Some(t.id)), &ctx()).unwrap();
+        let events = |db: &SqliteBackend| -> Vec<String> {
+            db.conn
+                .prepare("SELECT type FROM events WHERE task_id = ?1 ORDER BY id")
+                .unwrap()
+                .query_map([t.id], |r| r.get::<_, String>(0))
+                .unwrap()
+                .map(|e| e.unwrap())
+                .collect()
+        };
+        assert!(!events(&db).contains(&"relocated".to_string()));
+
+        // Other branch: the same claim row moves there, with the new base.
+        let mut moved = claim_req(Some(t.id));
+        moved.loc.branch = Some("task/fb-1".into());
+        moved.loc.head = Some("base2".into());
+        let after = db.claim(&a, &moved, &ctx()).unwrap();
+        let c = after.claim.unwrap();
+        assert_eq!(c.id, first_claim.id, "claim is updated, not replaced");
+        assert_eq!(c.branch.as_deref(), Some("task/fb-1"));
+        assert_eq!(c.base_commit.as_deref(), Some("base2"));
+        assert_eq!(c.claimed_at, first_claim.claimed_at);
+        assert!(events(&db).contains(&"relocated".to_string()));
+
+        // Moving outside git (no HEAD) keeps the base.
+        let mut nogit = claim_req(Some(t.id));
+        nogit.loc.cwd = "/elsewhere".into();
+        nogit.loc.branch = None;
+        nogit.loc.head = None;
+        let c = db.claim(&a, &nogit, &ctx()).unwrap().claim.unwrap();
+        assert_eq!(c.cwd, "/elsewhere");
+        assert_eq!(c.base_commit.as_deref(), Some("base2"), "base kept");
+
+        // In review the location is frozen.
+        let mut done_t = db.add_task(&h, &new_task("r"), &ctx()).unwrap();
+        db.claim(&a, &claim_req(Some(done_t.id)), &ctx()).unwrap();
+        done_t = db
+            .apply(&a, done_t.id, &Command::Done { result: None }, &ctx())
+            .unwrap();
+        assert_eq!(done_t.status, Status::Review);
+        assert_eq!(
+            db.claim(
+                &a,
+                &{
+                    let mut r = moved.clone();
+                    r.id = Some(done_t.id);
+                    r
+                },
+                &ctx()
+            )
+            .unwrap_err()
+            .code(),
+            "BAD_TRANSITION"
+        );
+
+        // Someone else still cannot take it by moving.
+        assert_eq!(
+            db.claim(&b, &moved, &ctx()).unwrap_err().code(),
+            "CLAIM_HELD"
+        );
     }
 
     #[test]

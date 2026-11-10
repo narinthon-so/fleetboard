@@ -70,7 +70,8 @@ expression: "snap(&e, &r)"
       },
       "title": "Rate-limit public endpoints",
       "updated_at": "<ts>"
-    }
+    },
+    "warnings": []
   },
   "ok": true,
   "v": 1

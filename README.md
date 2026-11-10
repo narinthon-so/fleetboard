@@ -145,7 +145,7 @@ Agents interact with `fb` via standard CLI commands or `--json` mode:
 |---|---|---|
 | **Context** | `fb prime` | Prints caller identity, active claim, latest handoff note, and recommended next steps. |
 | **Discover** | `fb ready` | Lists unblocked tasks ready to be claimed. |
-| **Claim** | `fb claim [<id>]` | Atomically claims a task (or highest priority unblocked task if `<id>` is omitted). |
+| **Claim** | `fb claim [<id>]` | Atomically claims a task (or highest priority unblocked task if `<id>` is omitted). Run again on your own in-progress task to move the claim to the current checkout; warns (also in JSON `warnings`) when the branch is neither `task/fb-<n>` nor the default. |
 | **Plan** | `fb plan <id> <text\|->` | Submits an implementation plan (required when `--plan-approval` is enabled). |
 | **Note** | `fb note <id> <text\|->` | Appends a `handoff`, `comment`, or `finding` note to the task. |
 | **Done** | `fb done <id> [--result …]` | Moves code tasks to `review` with live git evidence. For `note` tasks, `--result` is required. |
