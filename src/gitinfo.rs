@@ -344,6 +344,44 @@ pub fn evidence(
     }
 }
 
+/// Default branch name for the repo at `cwd` (from `origin/HEAD`), if known.
+pub fn default_branch(cwd: &Path) -> Option<String> {
+    run_git(
+        cwd,
+        &[
+            "symbolic-ref",
+            "--quiet",
+            "--short",
+            "refs/remotes/origin/HEAD",
+        ],
+    )
+    .filter(|o| o.status.success())
+    .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+    .and_then(|s| s.strip_prefix("origin/").map(str::to_string))
+}
+
+/// Base commit for a claim moved to the checkout at `cwd`: the old base when
+/// it is already an ancestor of HEAD, else the fork point of HEAD and the old
+/// base, else HEAD. Keeps the commit count of work done on the new branch.
+pub fn relocation_base(cwd: &Path, old_base: Option<&str>) -> Option<String> {
+    let rev = |args: &[&str]| {
+        run_git(cwd, args)
+            .filter(|o| o.status.success())
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+            .filter(|s| !s.is_empty())
+    };
+    let head = rev(&["rev-parse", "HEAD"])?;
+    let Some(old) = old_base else {
+        return Some(head);
+    };
+    let is_ancestor = run_git(cwd, &["merge-base", "--is-ancestor", old, "HEAD"])
+        .is_some_and(|o| o.status.success());
+    if is_ancestor {
+        return Some(old.to_string());
+    }
+    rev(&["merge-base", "HEAD", old]).or(Some(head))
+}
+
 /// Last commit time on the given branch (committer date).
 pub fn last_commit_time(cwd: &Path, branch: &str) -> Option<DateTime<Utc>> {
     let out = run_git(cwd, &["log", "-1", "--format=%ct", branch])?;

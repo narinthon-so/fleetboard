@@ -900,26 +900,55 @@ pub fn dispatch(s: &Session, cmd: &Cmd) -> Result<Out> {
             let workspace_id = s
                 .adapter
                 .workspace_id(&s.actor.external_id, &s.cwd.to_string_lossy());
+            let task_id = id.as_deref().map(parse_id).transpose()?;
+            let mut loc = s.loc.clone().unwrap_or_else(|| Location {
+                host: s.host.clone(),
+                cwd: s.cwd.to_string_lossy().into_owned(),
+                branch: None,
+                head: None,
+            });
+            // Re-claiming your own task re-anchors the claim where you are now:
+            // location plus a base commit that keeps earlier commits counted.
+            let mut before = None;
+            if !*steal
+                && let Some(tid) = task_id
+                && let Ok(held) = s.db.task_detail(tid)
+                && let Some(c) = held.task.claim
+                && c.actor.id == s.actor.id
+            {
+                if loc.head.is_some() {
+                    loc.head = gitinfo::relocation_base(&s.cwd, c.base_commit.as_deref());
+                }
+                before = Some((c.host, c.cwd, c.branch, c.base_commit));
+            }
             let req = ClaimRequest {
-                id: id.as_deref().map(parse_id).transpose()?,
+                id: task_id,
                 steal: *steal,
                 for_actor: for_actor
                     .as_deref()
                     .map(|a| s.db.find_actor(a))
                     .transpose()?,
-                loc: s.loc.clone().unwrap_or_else(|| Location {
-                    host: s.host.clone(),
-                    cwd: s.cwd.to_string_lossy().into_owned(),
-                    branch: None,
-                    head: None,
-                }),
+                loc,
                 scope_project,
                 workspace_id,
             };
             let t = s.db.claim(&s.actor, &req, &s.ctx)?;
             let c = t.claim.as_ref().expect("claimed task has a claim");
-            let text = format!(
-                "claimed {} \"{}\"\n  {} @ {}:{}{}\n",
+            let relocating = before.is_some_and(|b| {
+                b != (
+                    c.host.clone(),
+                    c.cwd.clone(),
+                    c.branch.clone(),
+                    c.base_commit.clone(),
+                )
+            });
+            let mut text = format!(
+                "{} {} \"{}\"\n  {} @ {}:{}{}\n",
+                if relocating {
+                    "moved claim on"
+                } else {
+                    "claimed"
+                },
                 fmt_id(t.id),
                 t.title,
                 c.actor.label,
@@ -929,6 +958,24 @@ pub fn dispatch(s: &Session, cmd: &Cmd) -> Result<Out> {
                     .as_ref()
                     .map_or(String::new(), |b| format!(" ({b})")),
             );
+            // Evidence is read from the claim's branch, so a claim taken from
+            // another task's branch reports the wrong commits. Claiming on the
+            // default branch is the normal start (the claim follows the new
+            // feature branch), so only other branches warn.
+            let expected = format!("task/{}", fmt_id(t.id));
+            let default = gitinfo::default_branch(&s.cwd);
+            if let Some(b) = c.branch.as_deref()
+                && b != expected
+                && Some(b) != default.as_deref()
+                && b != "main"
+                && b != "master"
+            {
+                text.push_str(&format!(
+                    "warning: branch {b} is not {expected}; evidence will be read from {b}. \
+                     Switch to {expected} and run `fb claim {}` again to move the claim.\n",
+                    fmt_id(t.id)
+                ));
+            }
             task_out(s, &t, text)
         }
         Cmd::Plan { id, text } => {
