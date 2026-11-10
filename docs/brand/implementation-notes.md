@@ -9,10 +9,11 @@ QA; this session routes work, checks evidence, and handles routine decisions.
 Repo: `/home/nsubuntu22/code/fleetboard`; branch: `task/fb-107`.
 Design base commit: `bfefca8`. Design handoff: [rollout.md](rollout.md).
 
-The user promoted both tasks; verified both are Todo/Ready on 2026-11-10.
-No implementation or QA agent has been launched yet. This session is
-`codex ba16e05` and has no Fleetboard tracker privileges. Agents may now use
-the normal claim workflow.
+The user promoted both tasks. Codex completed implementation in commit `894ccd7`
+and fb-107 is in Review with a clean worktree. Lead inspected the diff, original
+asset byte equality, and representative light/dark/mobile screenshots. Agy QA
+is the next step; no final verification has been performed. This session is
+`codex ba16e05` and has no Fleetboard tracker privileges.
 Never use `--as-human`, alter the database, strip agent identity, or ask another
 agent to bypass a refusal.
 
@@ -34,8 +35,8 @@ agent to bypass a refusal.
 | Role | Agent | State |
 | --- | --- | --- |
 | Lead | Current Codex session, ba16e05, gpt-6.1-sol high | Coordinating implementation |
-| Implementation | New Codex agent, not created; gpt-6.1-sol medium, full-access | Ready to launch and claim fb-107 |
-| QA | New Antigravity/Agy agent, not created; gemini-3.8-flash-high, full-access | Awaiting implementation Review |
+| Implementation | Codex 5a27a3bc-4813-468a-942b-473a5a0e9830; gpt-6.1-sol medium, full-access | Idle; implementation 894ccd7 in Review |
+| QA | New Antigravity/Agy agent, not created; gemini-3.8-flash-high, full-access | Ready to launch against 894ccd7 |
 
 Paseo host: RPI, server `srv_rvF3fpEOPEZD`. Codex and Antigravity providers are
 available; no named launch profiles are configured. Discover current models and
@@ -64,14 +65,35 @@ record command exit codes and evidence and avoid redundant reruns.
 ## Remaining
 
 - [x] Promote fb-107 and fb-108 through permitted Fleetboard controls (user).
-- [ ] Check provider models/quota; launch Codex with the saved implementation brief.
-- [ ] Codex claims fb-107, applies branding, checks and commits, and leaves Review evidence.
-- [ ] Lead inspects the implementation commit and routes concrete fixes if needed.
+- [x] Check provider models/quota; launch Codex with the saved implementation brief.
+- [x] Codex claims fb-107, applies branding, checks and commits, and leaves Review evidence.
+- [x] Lead inspects the implementation commit and routes concrete fixes if needed.
 - [ ] Launch Agy with the saved QA brief against the implementation commit.
 - [ ] Confirm QA evidence; route findings to Codex and retest fixes.
 - [ ] Report final commits and verification to the user for final human verification.
 
 ## Open findings
 
-None; implementation is ready to start. The earlier HUMAN_ONLY promotion refusal
-was resolved by the user promoting both tasks directly.
+No code defects found during the initial lead diff review. Independent QA remains.
+The earlier HUMAN_ONLY promotion refusal was resolved by the user promoting both
+tasks directly.
+
+## Implementation review — 2026-11-10
+
+- Commit `894ccd7` exists and changes the expected header/login components, theme
+  rules, HTML head, approved runtime assets, README, tracked build output and
+  a focused embedded-static-serving test. Co-author trailer is present.
+- No app auth or permission-policy change; semantic status colours are unchanged.
+  Header wrapping preserves access to the 200 px lockup and scrollable filters.
+- Lead compared all 12 runtime asset files with approved sources and built copies:
+  exact byte equality. Representative 320 px login/board and 1440 px light board
+  screenshots show readable, loaded artwork without clipping of the logo.
+- Codex reports exit 0 for typecheck, lint, build, focused embedded-serving test,
+  keyboard/dependency/note-verification checks, production-preview branding checks,
+  formatting and whitespace checks. These are reported results, not a verification
+  stamp; Agy must produce independent browser/embedded-server evidence and logs.
+- Codex evidence: `/tmp/fb-107-evidence/report.md`, test driver and 12 screenshots.
+  Copies are retained in `docs/brand/evidence/fb-107/` for durable review.
+- Paseo confirmed the Codex worker idle with no pending permissions. Agy may run
+  sequentially. Use branch `task/fb-108` from this reviewed implementation for the
+  note task, so its claim matches the required branch convention.
