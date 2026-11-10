@@ -1,0 +1,237 @@
+SERVER ERR:  WARN  Issue while reading "/home/nsubuntu22/.npmrc". Failed to replace env in config: ${NPM_TOKEN}
+
+--- 1. TESTING UNAUTHENTICATED LOGIN SCREEN BRANDING ---
+  REQ: GET http://127.0.0.1:5196/
+  RESP: 200 http://127.0.0.1:5196/
+  REQ: GET https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;600&family=Geist:wght@400;600&display=swap
+  REQ: GET http://127.0.0.1:5196/assets/index-CtJGSoVQ.js
+  REQ: GET http://127.0.0.1:5196/assets/index-CMZvDXEI.css
+  RESP: 200 http://127.0.0.1:5196/assets/index-CMZvDXEI.css
+  RESP: 200 http://127.0.0.1:5196/assets/index-CtJGSoVQ.js
+  RESP: 200 https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;600&family=Geist:wght@400;600&display=swap
+  REQ: GET http://127.0.0.1:5196/api/board
+  REQ: GET http://127.0.0.1:5196/brand/fleetboard-horizontal-color.svg
+  REQ: GET http://127.0.0.1:5196/brand/fleetboard-horizontal-white.svg
+  RESP: 200 http://127.0.0.1:5196/brand/fleetboard-horizontal-color.svg
+  RESP: 200 http://127.0.0.1:5196/brand/fleetboard-horizontal-white.svg
+  REQ: GET http://127.0.0.1:5196/api/events
+  RESP: 401 http://127.0.0.1:5196/api/board
+  REQ: GET https://fonts.gstatic.com/s/geistmono/v6/or3nQ6H-1_WfwkMZI_qYFrcdmg.woff2
+  REQ: GET https://fonts.gstatic.com/s/geist/v5/gyByhwUxId8gMEwcGFU.woff2
+  RESP: 200 http://127.0.0.1:5196/api/events
+Login logo dark 1440px: width=240.0px, height=53.2px, x=600.0px
+  RESP: 200 https://fonts.gstatic.com/s/geistmono/v6/or3nQ6H-1_WfwkMZI_qYFrcdmg.woff2
+  RESP: 200 https://fonts.gstatic.com/s/geist/v5/gyByhwUxId8gMEwcGFU.woff2
+  Captured screenshot: /tmp/fb-lead-verification/browser/login-dark-1440.png
+Login logo light 1440px: width=240.0px, height=53.2px, x=600.0px
+  Captured screenshot: /tmp/fb-lead-verification/browser/login-light-1440.png
+  REQ: GET http://127.0.0.1:5196/
+  RESP: 200 http://127.0.0.1:5196/
+  REQ: GET https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;600&family=Geist:wght@400;600&display=swap
+  REQ: GET http://127.0.0.1:5196/assets/index-CtJGSoVQ.js
+  REQ: GET http://127.0.0.1:5196/assets/index-CMZvDXEI.css
+  RESP: 200 http://127.0.0.1:5196/assets/index-CMZvDXEI.css
+  RESP: 200 http://127.0.0.1:5196/assets/index-CtJGSoVQ.js
+  RESP: 200 https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;600&family=Geist:wght@400;600&display=swap
+  REQ: GET http://127.0.0.1:5196/api/board
+  REQ: GET http://127.0.0.1:5196/brand/fleetboard-horizontal-color.svg
+  REQ: GET http://127.0.0.1:5196/brand/fleetboard-horizontal-white.svg
+  REQ: GET http://127.0.0.1:5196/api/events
+  RESP: 200 http://127.0.0.1:5196/brand/fleetboard-horizontal-color.svg
+  RESP: 200 http://127.0.0.1:5196/brand/fleetboard-horizontal-white.svg
+  RESP: 401 http://127.0.0.1:5196/api/board
+  RESP: 200 http://127.0.0.1:5196/api/events
+  REQ: GET https://fonts.gstatic.com/s/geistmono/v6/or3nQ6H-1_WfwkMZI_qYFrcdmg.woff2
+  REQ: GET https://fonts.gstatic.com/s/geist/v5/gyByhwUxId8gMEwcGFU.woff2
+  RESP: 200 https://fonts.gstatic.com/s/geistmono/v6/or3nQ6H-1_WfwkMZI_qYFrcdmg.woff2
+Login logo dark 375px: width=240.0px, height=53.2px, x=67.5px
+  RESP: 200 https://fonts.gstatic.com/s/geist/v5/gyByhwUxId8gMEwcGFU.woff2
+  Captured screenshot: /tmp/fb-lead-verification/browser/login-dark-375.png
+Login logo light 375px: width=240.0px, height=53.2px, x=67.5px
+  Captured screenshot: /tmp/fb-lead-verification/browser/login-light-375.png
+  REQ: GET http://127.0.0.1:5196/
+  RESP: 200 http://127.0.0.1:5196/
+  REQ: GET https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;600&family=Geist:wght@400;600&display=swap
+  REQ: GET http://127.0.0.1:5196/assets/index-CtJGSoVQ.js
+  REQ: GET http://127.0.0.1:5196/assets/index-CMZvDXEI.css
+  RESP: 200 http://127.0.0.1:5196/assets/index-CMZvDXEI.css
+  RESP: 200 http://127.0.0.1:5196/assets/index-CtJGSoVQ.js
+  RESP: 200 https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;600&family=Geist:wght@400;600&display=swap
+  REQ: GET http://127.0.0.1:5196/api/board
+  REQ: GET http://127.0.0.1:5196/brand/fleetboard-horizontal-color.svg
+  REQ: GET http://127.0.0.1:5196/brand/fleetboard-horizontal-white.svg
+  RESP: 200 http://127.0.0.1:5196/brand/fleetboard-horizontal-color.svg
+  RESP: 200 http://127.0.0.1:5196/brand/fleetboard-horizontal-white.svg
+  REQ: GET http://127.0.0.1:5196/api/events
+  REQ: GET https://fonts.gstatic.com/s/geistmono/v6/or3nQ6H-1_WfwkMZI_qYFrcdmg.woff2
+  RESP: 401 http://127.0.0.1:5196/api/board
+  RESP: 200 http://127.0.0.1:5196/api/events
+  REQ: GET https://fonts.gstatic.com/s/geist/v5/gyByhwUxId8gMEwcGFU.woff2
+Login logo dark 320px: width=240.0px, height=53.2px, x=40.0px
+  RESP: 200 https://fonts.gstatic.com/s/geistmono/v6/or3nQ6H-1_WfwkMZI_qYFrcdmg.woff2
+  RESP: 200 https://fonts.gstatic.com/s/geist/v5/gyByhwUxId8gMEwcGFU.woff2
+  Captured screenshot: /tmp/fb-lead-verification/browser/login-dark-320.png
+Login logo light 320px: width=240.0px, height=53.2px, x=40.0px
+  Captured screenshot: /tmp/fb-lead-verification/browser/login-light-320.png
+--- 2. TESTING AUTHENTICATION FLOW VIA UI ---
+  REQ: GET http://127.0.0.1:5196/
+  RESP: 200 http://127.0.0.1:5196/
+  REQ: GET https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;600&family=Geist:wght@400;600&display=swap
+  REQ: GET http://127.0.0.1:5196/assets/index-CtJGSoVQ.js
+  REQ: GET http://127.0.0.1:5196/assets/index-CMZvDXEI.css
+  RESP: 200 http://127.0.0.1:5196/assets/index-CMZvDXEI.css
+  RESP: 200 http://127.0.0.1:5196/assets/index-CtJGSoVQ.js
+  RESP: 200 https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;600&family=Geist:wght@400;600&display=swap
+  REQ: GET http://127.0.0.1:5196/api/board
+  REQ: GET http://127.0.0.1:5196/brand/fleetboard-horizontal-color.svg
+  REQ: GET http://127.0.0.1:5196/brand/fleetboard-horizontal-white.svg
+  REQ: GET http://127.0.0.1:5196/api/events
+  REQ: GET https://fonts.gstatic.com/s/geistmono/v6/or3nQ6H-1_WfwkMZI_qYFrcdmg.woff2
+  RESP: 200 http://127.0.0.1:5196/brand/fleetboard-horizontal-color.svg
+  RESP: 200 http://127.0.0.1:5196/brand/fleetboard-horizontal-white.svg
+  RESP: 401 http://127.0.0.1:5196/api/board
+  RESP: 200 http://127.0.0.1:5196/api/events
+  REQ: GET https://fonts.gstatic.com/s/geist/v5/gyByhwUxId8gMEwcGFU.woff2
+  RESP: 200 https://fonts.gstatic.com/s/geistmono/v6/or3nQ6H-1_WfwkMZI_qYFrcdmg.woff2
+  RESP: 200 https://fonts.gstatic.com/s/geist/v5/gyByhwUxId8gMEwcGFU.woff2
+  REQ: POST http://127.0.0.1:5196/api/login
+  RESP: 401 http://127.0.0.1:5196/api/login
+  Invalid token error correctly displayed.
+  REQ: POST http://127.0.0.1:5196/api/login
+  RESP: 200 http://127.0.0.1:5196/api/login
+  REQ: GET http://127.0.0.1:5196/api/board
+  RESP: 200 http://127.0.0.1:5196/api/board
+  REQ: GET http://127.0.0.1:5196/api/events
+  RESP: 200 http://127.0.0.1:5196/api/events
+  Successful login! Board header loaded.
+--- 3. TESTING AUTHENTICATED BOARD SCREEN BRANDING & CONTROLS ---
+  REQ: GET http://127.0.0.1:5196/
+  RESP: 200 http://127.0.0.1:5196/
+  REQ: GET https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;600&family=Geist:wght@400;600&display=swap
+  REQ: GET http://127.0.0.1:5196/assets/index-CtJGSoVQ.js
+  REQ: GET http://127.0.0.1:5196/assets/index-CMZvDXEI.css
+  RESP: 200 http://127.0.0.1:5196/assets/index-CMZvDXEI.css
+  RESP: 200 http://127.0.0.1:5196/assets/index-CtJGSoVQ.js
+  RESP: 200 https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;600&family=Geist:wght@400;600&display=swap
+  REQ: GET http://127.0.0.1:5196/api/board
+  REQ: GET http://127.0.0.1:5196/brand/fleetboard-horizontal-color.svg
+  REQ: GET http://127.0.0.1:5196/brand/fleetboard-horizontal-white.svg
+  RESP: 200 http://127.0.0.1:5196/brand/fleetboard-horizontal-color.svg
+  RESP: 200 http://127.0.0.1:5196/brand/fleetboard-horizontal-white.svg
+  REQ: GET http://127.0.0.1:5196/api/events
+  REQ: GET https://fonts.gstatic.com/s/geistmono/v6/or3nQ6H-1_WfwkMZI_qYFrcdmg.woff2
+  RESP: 200 http://127.0.0.1:5196/api/board
+  RESP: 200 http://127.0.0.1:5196/api/events
+  RESP: 200 https://fonts.gstatic.com/s/geistmono/v6/or3nQ6H-1_WfwkMZI_qYFrcdmg.woff2
+Board header logo dark 1440px: width=200.0px, height=44.3px, x=16.0px
+  SSE indicator visible (reconnecting)
+  Captured screenshot: /tmp/fb-lead-verification/browser/board-dark-1440.png
+Board header logo light 1440px: width=200.0px, height=44.3px, x=16.0px
+  SSE indicator visible (reconnecting)
+  Captured screenshot: /tmp/fb-lead-verification/browser/board-light-1440.png
+  REQ: GET http://127.0.0.1:5196/
+  RESP: 200 http://127.0.0.1:5196/
+  REQ: GET https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;600&family=Geist:wght@400;600&display=swap
+  REQ: GET http://127.0.0.1:5196/assets/index-CtJGSoVQ.js
+  REQ: GET http://127.0.0.1:5196/assets/index-CMZvDXEI.css
+  RESP: 200 http://127.0.0.1:5196/assets/index-CMZvDXEI.css
+  RESP: 200 http://127.0.0.1:5196/assets/index-CtJGSoVQ.js
+  RESP: 200 https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;600&family=Geist:wght@400;600&display=swap
+  REQ: GET http://127.0.0.1:5196/api/board
+  REQ: GET http://127.0.0.1:5196/brand/fleetboard-horizontal-color.svg
+  REQ: GET http://127.0.0.1:5196/brand/fleetboard-horizontal-white.svg
+  REQ: GET http://127.0.0.1:5196/api/events
+  RESP: 200 http://127.0.0.1:5196/brand/fleetboard-horizontal-color.svg
+  RESP: 200 http://127.0.0.1:5196/brand/fleetboard-horizontal-white.svg
+  REQ: GET https://fonts.gstatic.com/s/geistmono/v6/or3nQ6H-1_WfwkMZI_qYFrcdmg.woff2
+  RESP: 200 http://127.0.0.1:5196/api/board
+  RESP: 200 http://127.0.0.1:5196/api/events
+  RESP: 200 https://fonts.gstatic.com/s/geistmono/v6/or3nQ6H-1_WfwkMZI_qYFrcdmg.woff2
+Board header logo dark 375px: width=200.0px, height=44.3px, x=16.0px
+  SSE indicator visible (reconnecting)
+  Captured screenshot: /tmp/fb-lead-verification/browser/board-dark-375.png
+Board header logo light 375px: width=200.0px, height=44.3px, x=16.0px
+  SSE indicator visible (reconnecting)
+  Captured screenshot: /tmp/fb-lead-verification/browser/board-light-375.png
+  REQ: GET http://127.0.0.1:5196/
+  RESP: 200 http://127.0.0.1:5196/
+  REQ: GET https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;600&family=Geist:wght@400;600&display=swap
+  REQ: GET http://127.0.0.1:5196/assets/index-CtJGSoVQ.js
+  REQ: GET http://127.0.0.1:5196/assets/index-CMZvDXEI.css
+  RESP: 200 http://127.0.0.1:5196/assets/index-CMZvDXEI.css
+  RESP: 200 http://127.0.0.1:5196/assets/index-CtJGSoVQ.js
+  RESP: 200 https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;600&family=Geist:wght@400;600&display=swap
+  REQ: GET http://127.0.0.1:5196/api/board
+  REQ: GET http://127.0.0.1:5196/brand/fleetboard-horizontal-color.svg
+  REQ: GET http://127.0.0.1:5196/brand/fleetboard-horizontal-white.svg
+  REQ: GET https://fonts.gstatic.com/s/geistmono/v6/or3nQ6H-1_WfwkMZI_qYFrcdmg.woff2
+  RESP: 200 http://127.0.0.1:5196/brand/fleetboard-horizontal-color.svg
+  RESP: 200 http://127.0.0.1:5196/brand/fleetboard-horizontal-white.svg
+  RESP: 200 http://127.0.0.1:5196/api/board
+  REQ: GET http://127.0.0.1:5196/api/events
+  RESP: 200 http://127.0.0.1:5196/api/events
+  RESP: 200 https://fonts.gstatic.com/s/geistmono/v6/or3nQ6H-1_WfwkMZI_qYFrcdmg.woff2
+Board header logo dark 320px: width=200.0px, height=44.3px, x=16.0px
+  SSE indicator visible (reconnecting)
+  Captured screenshot: /tmp/fb-lead-verification/browser/board-dark-320.png
+Board header logo light 320px: width=200.0px, height=44.3px, x=16.0px
+  SSE indicator visible (reconnecting)
+  Captured screenshot: /tmp/fb-lead-verification/browser/board-light-320.png
+--- 4. TESTING BOARD CONTROLS & FUNCTIONAL STATUS COLOURS ---
+  REQ: GET http://127.0.0.1:5196/
+  RESP: 200 http://127.0.0.1:5196/
+  REQ: GET https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;600&family=Geist:wght@400;600&display=swap
+  REQ: GET http://127.0.0.1:5196/assets/index-CtJGSoVQ.js
+  REQ: GET http://127.0.0.1:5196/assets/index-CMZvDXEI.css
+  RESP: 200 http://127.0.0.1:5196/assets/index-CMZvDXEI.css
+  RESP: 200 http://127.0.0.1:5196/assets/index-CtJGSoVQ.js
+  RESP: 200 https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;600&family=Geist:wght@400;600&display=swap
+  REQ: GET http://127.0.0.1:5196/api/board
+  REQ: GET http://127.0.0.1:5196/brand/fleetboard-horizontal-color.svg
+  REQ: GET http://127.0.0.1:5196/brand/fleetboard-horizontal-white.svg
+  REQ: GET https://fonts.gstatic.com/s/geistmono/v6/or3nQ6H-1_WfwkMZI_qYFrcdmg.woff2
+  RESP: 200 http://127.0.0.1:5196/brand/fleetboard-horizontal-color.svg
+  RESP: 200 http://127.0.0.1:5196/brand/fleetboard-horizontal-white.svg
+  RESP: 200 http://127.0.0.1:5196/api/board
+  REQ: GET http://127.0.0.1:5196/api/events
+  RESP: 200 http://127.0.0.1:5196/api/events
+  RESP: 200 https://fonts.gstatic.com/s/geistmono/v6/or3nQ6H-1_WfwkMZI_qYFrcdmg.woff2
+  REQ: GET http://127.0.0.1:5196/api/tasks/fb-101
+  RESP: 200 http://127.0.0.1:5196/api/tasks/fb-101
+  Keyboard navigation: j selected fb-101, Enter opened task detail modal.
+  Escape closed task detail modal.
+  Filter combobox opened successfully.
+  REQ: GET http://127.0.0.1:5196/
+  RESP: 200 http://127.0.0.1:5196/
+  REQ: GET https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;600&family=Geist:wght@400;600&display=swap
+  REQ: GET http://127.0.0.1:5196/assets/index-CtJGSoVQ.js
+  REQ: GET http://127.0.0.1:5196/assets/index-CMZvDXEI.css
+  RESP: 200 http://127.0.0.1:5196/assets/index-CMZvDXEI.css
+  RESP: 200 http://127.0.0.1:5196/assets/index-CtJGSoVQ.js
+  RESP: 200 https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;600&family=Geist:wght@400;600&display=swap
+  REQ: GET http://127.0.0.1:5196/api/board
+  REQ: GET http://127.0.0.1:5196/brand/fleetboard-horizontal-color.svg
+  REQ: GET http://127.0.0.1:5196/brand/fleetboard-horizontal-white.svg
+  REQ: GET http://127.0.0.1:5196/api/events
+  RESP: 200 http://127.0.0.1:5196/brand/fleetboard-horizontal-color.svg
+  RESP: 200 http://127.0.0.1:5196/brand/fleetboard-horizontal-white.svg
+  RESP: 200 http://127.0.0.1:5196/api/board
+  RESP: 200 http://127.0.0.1:5196/api/events
+  REQ: GET https://fonts.gstatic.com/s/geistmono/v6/or3nQ6H-1_WfwkMZI_qYFrcdmg.woff2
+  RESP: 200 https://fonts.gstatic.com/s/geistmono/v6/or3nQ6H-1_WfwkMZI_qYFrcdmg.woff2
+  Narrow mobile filter row rendered with scrollable container.
+--- 5. TESTING STATIC ASSET DIRECT NETWORK RESOLUTION ---
+  Asset OK: /favicon.ico [HTTP 200, image/x-icon, 1303 bytes]
+  Asset OK: /favicon.svg [HTTP 200, image/svg+xml, 298 bytes]
+  Asset OK: /apple-touch-icon.png [HTTP 200, image/png, 943 bytes]
+  Asset OK: /site.webmanifest [HTTP 200, application/manifest+json, 483 bytes]
+  Asset OK: /brand/fleetboard-horizontal-color.svg [HTTP 200, image/svg+xml, 3263 bytes]
+  Asset OK: /brand/fleetboard-horizontal-white.svg [HTTP 200, image/svg+xml, 3263 bytes]
+  Asset OK: /icon-192.png [HTTP 200, image/png, 949 bytes]
+  Asset OK: /icon-512.png [HTTP 200, image/png, 2459 bytes]
+  Asset OK: /maskable-512.png [HTTP 200, image/png, 2354 bytes]
+  Static asset resolution verified on all 9 critical runtime assets.
+  0 browser page errors encountered during entire test suite.
+
+=== ALL PLAYWRIGHT BRANDING & INTERACTION CHECKS PASSED ===
+EXIT 0

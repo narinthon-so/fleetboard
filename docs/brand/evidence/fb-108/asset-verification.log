@@ -1,0 +1,15 @@
+=== ASSET BYTE-FOR-BYTE EQUALITY CHECK ===
+OK          943 B | sha256:08440224a71d | apple-touch-icon.png
+OK          269 B | sha256:2c7cc3f406c6 | favicon-16.png
+OK          414 B | sha256:0d6ce282f42e | favicon-32.png
+OK          627 B | sha256:cbb50aa78d65 | favicon-48.png
+OK         1303 B | sha256:cc884c9a1277 | favicon.ico
+OK          298 B | sha256:ff463625d36f | favicon.svg
+OK          949 B | sha256:4983ece65b35 | icon-192.png
+OK         2459 B | sha256:9d19281255da | icon-512.png
+OK         2354 B | sha256:bba2244b93f7 | maskable-512.png
+OK          483 B | sha256:ac6d2c562d61 | site.webmanifest
+OK         3263 B | sha256:877344694663 | fleetboard-horizontal-color.svg
+OK         3263 B | sha256:6dfa3ad52652 | fleetboard-horizontal-white.svg
+
+All 12 assets matched across source, public, and dist: True

@@ -1,0 +1,67 @@
+# fb-108 QA Command Log
+
+Tested implementation commit: 894ccd7cb164a1c2700e946a02f9c26648136ed1
+Diff base: de3af437d00c834483b863e570c8bd734ecaeded
+Checkout HEAD: 9cd057d1b0eb78a143073c2b22e6c3166645dd1e
+Branch: task/fb-108
+
+1. Python asset byte equality check
+   Command: python3 asset_check.py
+   Exit code: 0
+   Output: All 12 runtime assets byte-for-byte identical across source, public, and dist.
+
+2. Python maskable safe circle check
+   Command: python3 maskable_check.py
+   Exit code: 0
+   Output: Max distance 152.1px <= safe radius 204.8px (within 80% circle).
+
+3. Web typecheck
+   Command: pnpm --dir web typecheck
+   Exit code: 0
+   Output: tsc --noEmit (clean)
+
+4. Web lint
+   Command: pnpm --dir web lint
+   Exit code: 0
+   Output: eslint . (clean)
+
+5. Web build
+   Command: pnpm --dir web build
+   Exit code: 0
+   Output: tsc && vite build (dist built cleanly)
+
+6. Code formatting & whitespace check
+   Command: cargo fmt --check && git diff --check
+   Exit code: 0
+   Output: clean
+
+7. Embedded web UI server test
+   Command: FB_HOME=$(mktemp -d) cargo test --test server_test -- test_serves_embedded_web_ui test_login_then_board_and_task_ok
+   Exit code: 0
+   Output: 2 passed; 0 failed; finished in 0.13s
+
+8. Existing interaction tests
+   Command: FB_HOME=$(mktemp -d) pnpm --dir web exec node scripts/test-keyboard.js
+   Exit code: 0
+   Output: PASS: j/k select, Enter opens, Escape closes and preserves selection
+
+   Command: FB_HOME=$(mktemp -d) pnpm --dir web exec node scripts/test-dependencies.js
+   Exit code: 0
+   Output: PASS: dependency detail renders, navigates, and shows reverse dependencies
+
+   Command: FB_HOME=$(mktemp -d) pnpm --dir web exec node scripts/test-note-verification.js
+   Exit code: 0
+   Output: PASS: 8 verification cases (detail null/zero evidence, keyboard, drag; note and code)
+
+9. Comprehensive Playwright browser QA check
+   Command: node /tmp/fb-108-evidence/qa-browser-check.mjs
+   Exit code: 0
+   Output:
+   - Login screen branding checked in dark & light modes at 1440, 375, and 320px
+   - Login authentication flow verified (invalid token rejection + valid token auth)
+   - Board header branding checked in dark & light modes at 1440, 375, and 320px
+   - UI theme toggle button verified (dynamic switching between light and dark)
+   - Keyboard navigation (j/k, Enter, Escape) and filter controls verified
+   - Narrow mobile layout verified (filter row in scrollable row, 0 whole-page overflow)
+   - Static asset network requests verified (200 OK, expected Content-Type headers)
+   - 0 browser page errors encountered

@@ -1,17 +1,19 @@
 # Parallel F rollout handoff
 
-The user selected **A — Parallel F** and requested Codex implementation followed
-by Agy QA. The complete design exploration and final kit are saved under
-`docs/brand/`; no application branding integration has been performed yet.
+The user selected **A — Parallel F**. Codex applied it in commit `894ccd7`, Agy
+reported a QA pass, and the lead reviewed the evidence and ran focused checks.
+Both fb-107 and fb-108 are in **Review**, ready for final human verification.
+All design work, implementation evidence and QA receipts are saved under
+`docs/brand/`. See [implementation-notes.md](implementation-notes.md) and the
+[QA coverage clarification](evidence/fb-108/README.md).
 
 ## Codex — fb-107
 
 Task: **Apply Parallel F branding (Codex)**, code task.
 
-Continue on `task/fb-107`, which contains the saved design assets. Follow the normal
-Fleetboard promotion and claim workflow before implementation. If starting in a
-different checkout, fetch this branch or bring its design commit into the working
-branch first; do not recreate the approved artwork.
+Delivered on `task/fb-107`, which contains the design assets and implementation.
+The original design base is `bfefca8`; do not recreate the approved artwork.
+The following scope and acceptance criteria were used for the implementation.
 
 Use the logo in the dashboard header, login screen, browser/platform icons, and
 README. Preserve functional status colours and existing behaviour. Run the web
@@ -27,7 +29,7 @@ the web build and embedded server, and the root `README.md`.
 
 Task: **QA Parallel F branding rollout (Agy)**, note task.
 
-Start once fb-107 has an implementation commit ready for Review. The two tasks
+QA ran after fb-107 had an implementation commit ready for Review. The two tasks
 are linked by their goals and handoff notes rather than a hard `blocked-by` edge:
 Fleetboard only clears a hard blocker at Done, which would put QA after the
 human's final verification.
@@ -54,5 +56,5 @@ guide's spacing, minimum sizes, and fixed geometry. The palette is Ember
 `#B84A2A`, Ink `#202522`, and Paper `#F5F3EE`. Fonts are outlined in the masters;
 the source font licence is included. Print PDFs are RGB reference artwork.
 
-Both tasks were created as drafts under the ordinary agent permissions. This
-handoff does not promote, claim, start, or complete either task.
+Both tasks were created as drafts and promoted by the user. Agents submitted
+implementation and QA for review; final human verification remains outstanding.

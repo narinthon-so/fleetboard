@@ -1,0 +1,5 @@
+Application source commit: 894ccd7
+JavaScript: byte-identical before and after clean build.
+CSS: removes only unused .mb-1, .h-10, .w-10, .text-base rules.
+Generated asset filenames and index references reflect the CSS dependency hash.
+Focused embedded tests passed after rebuilding; browser driver also passed on refreshed bundle.
