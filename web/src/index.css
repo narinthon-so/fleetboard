@@ -1,4 +1,6 @@
-@import "tailwindcss";
+/* Scan application sources only; generated dist must never feed the next build. */
+@import "tailwindcss" source(".");
+@source "../index.html";
 
 .brand-logo-dark {
   display: none;
