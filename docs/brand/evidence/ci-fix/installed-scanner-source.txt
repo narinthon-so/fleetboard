@@ -1,0 +1,5 @@
+Installed @tailwindcss/vite/dist/index.mjs scanner source selection:
+let d=(this.compiler.root==="none"?[]:this.compiler.root===null?[{base:this.base,pattern:"**/*",negated:!1}]:[{...this.compiler.root,negated:!1}]).concat(this.compiler.sources);this.scanner=new Y({sources:d}),v&&t.end("Setup scanner")}else for(let i of this.buildDependencies.keys())c(i);if(!(this.compiler.features&(b.AtApply|b.JsPluginCompat|b.Them
+
+Installed tailwindcss/dist/lib.mjs source path syntax:
+if(L.startsWith("source(")){let E=L.slice(7,-1);if(E==="none"){S=E;continue}if(E[0]==='"'&&E[E.length-1]!=='"'||E[0]==="'"&&E[E.length-1]!=="'"||E[0]!=="'"&&E[0]!=='"')throw new Error("`source(\u2026)` paths must be quoted.");S={base:D.context.sourceBase??D.context.base,pattern:E.slice(1,-1)}}u=b,s|=16}if(b.name==="@utility"){if(D.parent!==null)throw new Error("`@utility` cannot be nested.");if(b.nodes.length===0)throw new Error(`\`@utility ${b.params}\` is empty. Utilities should include at lea

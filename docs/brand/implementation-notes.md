@@ -81,9 +81,9 @@ record command exit codes and evidence and avoid redundant reruns.
 
 ## Open findings
 
-F1 — OPEN: PR #5 frontend stale-dist check fails on a clean CI runner. Build,
-lint/typecheck and the other four CI jobs passed. Codex is assigned the narrow
-build reproducibility follow-up in `prompts/codex-ci-fix.md`.
+F1 — FIXED in `f592a0c`: Tailwind now scans application sources and index.html
+instead of generated dist. Independent seeded/unseeded clean exports match the
+tracked bundle. Latest remote result is recorded in PR #5 checks and fb-107 notes.
 The earlier HUMAN_ONLY promotion refusal was resolved by the user promoting both
 tasks directly.
 
@@ -167,3 +167,14 @@ tasks directly.
   Saved brief: `prompts/codex-ci-fix.md`. Codex quota is OK (32% 5h, 80% week).
 - Temporarily disable worker push again during this follow-up; restore original
   configuration before the lead pushes. No final task verification or merge.
+- Codex commit `f592a0c` scopes scanning with `source(".")` and an explicit
+  `@source "../index.html"`; the stale-dist workflow guard remains intact.
+  It reproduced the original CI output before fixing the scan root.
+- Lead inspected the four-line source change and mobile screenshots, and
+  independently compared every generated file in both seeded and unseeded
+  clean-export builds with the working bundle: all 15 files byte-identical.
+- Build, lint, typecheck, keyboard and responsive branding checks passed.
+  Post-commit rebuild leaves dist unchanged. The smaller CSS drops non-app
+  candidates that were previously collected from generated/test files.
+- Durable receipts: `docs/brand/evidence/ci-fix/`. The follow-up documentation
+  records this review; the next remote CI run is the final reproducibility check.

@@ -1,0 +1,4 @@
+ WARN  Issue while reading "/home/nsubuntu22/.npmrc". Failed to replace env in config: ${NPM_TOKEN}
+
+> web@1.0.0 lint /home/nsubuntu22/code/fleetboard/web
+> eslint .
