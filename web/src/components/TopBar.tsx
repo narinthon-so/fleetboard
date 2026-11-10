@@ -1,5 +1,6 @@
 import { useRef, useEffect, useMemo } from 'react';
 import type { BoardData } from '../types/api';
+import { agentGroup } from '../lib/format';
 import { Combobox, InstanceCombobox, type InstanceGroup } from './ui/combobox';
 import { Search, Moon, Sun } from 'lucide-react';
 
@@ -87,33 +88,30 @@ export function TopBar({
     return Array.from(set).map((h) => ({ value: h, label: h }));
   }, [boardData]);
 
-  // Compute Agent options
+  // Compute Agent options: one per provider (human / claude / codex / ...),
+  // not one per session. Every agent session registers a new actor, so a
+  // per-actor list grows without bound; per-session drill-down is the
+  // Instance filter's job.
   const agentOptions = useMemo(() => {
     if (!boardData) return [];
-    const map = new Map<string, { label: string; secondary?: string }>();
+    const counts = new Map<string, number>();
     for (const act of boardData.actors) {
-      const val = act.external_id || act.label;
-      map.set(val, {
-        label: act.label,
-        secondary: act.provider || undefined,
-      });
+      const key = agentGroup(act);
+      if (!counts.has(key)) counts.set(key, 0);
     }
     for (const t of boardData.tasks) {
       if (t.claim?.actor) {
-        const val = t.claim.actor.external_id || t.claim.actor.label;
-        if (!map.has(val)) {
-          map.set(val, {
-            label: t.claim.actor.label,
-            secondary: t.claim.actor.provider || undefined,
-          });
-        }
+        const key = agentGroup(t.claim.actor);
+        counts.set(key, (counts.get(key) ?? 0) + 1);
       }
     }
-    return Array.from(map.entries()).map(([val, data]) => ({
-      value: val,
-      label: data.label,
-      secondary: data.secondary,
-    }));
+    return Array.from(counts.entries())
+      .sort(([a], [b]) => (a === 'human' ? -1 : b === 'human' ? 1 : a.localeCompare(b)))
+      .map(([key, claimed]) => ({
+        value: key,
+        label: key,
+        secondary: claimed > 0 ? `${claimed} claimed` : undefined,
+      }));
   }, [boardData]);
 
   // Compute Two-Level Instance groups (project -> instances)

@@ -1,4 +1,4 @@
-import type { Task } from '../types/api';
+import type { Actor, Task } from '../types/api';
 
 export function formatDuration(dateStr: string): string {
   const diffMs = Math.max(0, Date.now() - new Date(dateStr).getTime());
@@ -19,6 +19,13 @@ export function getProviderMonogram(provider: string | null, kind: 'agent' | 'hu
   if (p.includes('codex')) return 'X';
   if (p.includes('antigravity') || p.includes('agy')) return 'A';
   return '?';
+}
+
+/** Agent filter group: 'human', the lower-cased provider, or 'unknown'. */
+export function agentGroup(actor: Pick<Actor, 'kind' | 'provider'>): string {
+  if (actor.kind === 'human') return 'human';
+  const p = actor.provider?.trim().toLowerCase();
+  return p ? p : 'unknown';
 }
 
 export function formatShortId(externalId: string | null, label: string): string {
