@@ -81,7 +81,9 @@ record command exit codes and evidence and avoid redundant reruns.
 
 ## Open findings
 
-No open application defects after QA and lead review.
+F1 — OPEN: PR #5 frontend stale-dist check fails on a clean CI runner. Build,
+lint/typecheck and the other four CI jobs passed. Codex is assigned the narrow
+build reproducibility follow-up in `prompts/codex-ci-fix.md`.
 The earlier HUMAN_ONLY promotion refusal was resolved by the user promoting both
 tasks directly.
 
@@ -151,3 +153,17 @@ tasks directly.
   with the already configured repository-owner credentials scoped to that
   command; the global active account was not changed.
 - Both fb-107 and fb-108 remain Review; no merge, tag or deployment performed.
+
+## CI follow-up — 2026-11-10
+
+- User requested a CI check. Run `42842747357` on head `9d3b5ad`: Rust Format,
+  Clippy, Ubuntu tests and macOS tests passed; Web Frontend failed only its
+  stale-dist comparison after a successful install/lint/typecheck/build.
+- Clean runner emits `index-wc-9dy6C.css` (48.23 kB); the local committed CSS is
+  `index-CMZvDXEI.css` (48.29 kB). Node 24 / pnpm 10.17.1 match. Raw log is at
+  `/tmp/fb-107-ci-failure.log`.
+- Reuse Codex agent 5a27a3bc-4813-468a-942b-473a5a0e9830 for F1. Preserve the
+  stale-dist guard; prove a clean-checkout/export build matches the fixed bundle.
+  Saved brief: `prompts/codex-ci-fix.md`. Codex quota is OK (32% 5h, 80% week).
+- Temporarily disable worker push again during this follow-up; restore original
+  configuration before the lead pushes. No final task verification or merge.
