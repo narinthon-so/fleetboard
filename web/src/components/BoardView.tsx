@@ -23,6 +23,7 @@ import { toast } from '../lib/toast';
 import { ConfirmDialog, RejectDialog } from './ActionDialogs';
 import { promoteTask, verifyTask, rejectTask, releaseTask, dropTask } from '../lib/api';
 import { cn } from '../lib/utils';
+import { agentGroup } from '../lib/format';
 
 interface BoardViewProps {
   boardData: BoardData | null;
@@ -139,9 +140,14 @@ export function BoardView({
 
       // Agent filter
       if (filters.agent) {
+        // Filter value is a provider group; exact external_id / label still
+        // match so older ?agent=<session> links keep working.
+        const actor = task.claim?.actor;
         const agentMatch =
-          task.claim?.actor.external_id === filters.agent ||
-          task.claim?.actor.label === filters.agent;
+          !!actor &&
+          (agentGroup(actor) === filters.agent ||
+            actor.external_id === filters.agent ||
+            actor.label === filters.agent);
         if (!agentMatch) return false;
       }
 
