@@ -105,14 +105,27 @@ export function TopBar({
         counts.set(key, (counts.get(key) ?? 0) + 1);
       }
     }
-    return Array.from(counts.entries())
+    const options = Array.from(counts.entries())
       .sort(([a], [b]) => (a === 'human' ? -1 : b === 'human' ? 1 : a.localeCompare(b)))
       .map(([key, claimed]) => ({
         value: key,
         label: key,
         secondary: claimed > 0 ? `${claimed} claimed` : undefined,
       }));
-  }, [boardData]);
+    // An older ?agent=<session id | label> link still filters BoardView by
+    // that session; keep it selectable so the selector shows the active
+    // filter instead of "all".
+    const selected = filters.agent;
+    if (selected && !counts.has(selected)) {
+      const actor = boardData.actors.find((a) => a.external_id === selected || a.label === selected);
+      options.push({
+        value: selected,
+        label: actor?.label ?? selected,
+        secondary: actor ? `${agentGroup(actor)} session` : 'session',
+      });
+    }
+    return options;
+  }, [boardData, filters.agent]);
 
   // Compute Two-Level Instance groups (project -> instances)
   const instanceGroups: InstanceGroup[] = useMemo(() => {
