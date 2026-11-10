@@ -3,6 +3,7 @@ import type { BoardData } from '../types/api';
 import { agentGroup } from '../lib/format';
 import { Combobox, InstanceCombobox, type InstanceGroup } from './ui/combobox';
 import { Search, Moon, Sun } from 'lucide-react';
+import { BrandLogo } from './BrandLogo';
 
 export type SSEStatus = 'connected' | 'reconnecting' | 'disconnected' | 'daemon_down';
 
@@ -208,16 +209,12 @@ export function TopBar({
   }, [boardData]);
 
   return (
-    <header className="flex items-center justify-between px-4 py-2 border-b border-[var(--border)] bg-[var(--card)]/90 backdrop-blur sticky top-0 z-30 select-none text-xs gap-3 flex-nowrap whitespace-nowrap overflow-x-auto min-h-[44px]">
+    <header className="flex items-center justify-between px-4 py-2 border-b border-[var(--border)] bg-[var(--card)]/90 backdrop-blur sticky top-0 z-30 select-none text-xs gap-3 flex-wrap lg:flex-nowrap whitespace-nowrap min-h-[44px]">
       {/* Brand */}
-      <div className="flex items-center gap-2 shrink-0">
-        <span className="font-semibold text-sm tracking-tight text-[var(--foreground)] font-mono">
-          fleetboard
-        </span>
-      </div>
+      <BrandLogo className="w-[200px]" />
 
-      {/* Filter controls — Strictly ONE Row */}
-      <div className="flex items-center gap-2 flex-nowrap shrink-0">
+      {/* Keep filters on one scrollable row, below the brand on narrow screens. */}
+      <div className="flex items-center gap-2 flex-nowrap order-last w-full min-w-0 overflow-x-auto lg:order-none lg:w-auto">
         {/* Project Combobox */}
         <Combobox
           label="Project"

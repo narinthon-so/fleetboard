@@ -1,4 +1,9 @@
-# fleetboard
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/parallel-f/digital/fleetboard-horizontal-white.svg">
+    <img src="docs/brand/parallel-f/digital/fleetboard-horizontal-color.svg" alt="fleetboard" width="360">
+  </picture>
+</h1>
 
 A task board for one person running a fleet of coding agents (Claude Code, Codex, Antigravity, …) across many repos.
 

@@ -1,5 +1,17 @@
 @import "tailwindcss";
 
+.brand-logo-dark {
+  display: none;
+}
+
+.dark .brand-logo-light, :root:not(.light) .brand-logo-light {
+  display: none;
+}
+
+.dark .brand-logo-dark, :root:not(.light) .brand-logo-dark {
+  display: block;
+}
+
 :root {
   --background: #ffffff;
   --foreground: #09090b;
