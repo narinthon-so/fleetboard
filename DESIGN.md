@@ -285,7 +285,7 @@ Every command with `--json` prints one JSON value on stdout and nothing else.
 | `fb prime` | Workflow guide for agents plus the caller's active claim and its latest handoff note. |
 | `fb whoami` | Print caller identity, host, project, instance, and delegated rights. |
 | `fb hook <event>` | Record agent lifecycle hook event (`session-start`, `stop`, `tool-use`, `prompt`) from stdin JSON. On `session-start`, prints `fb prime` context (`hookSpecificOutput` for Claude Code, plain text for Codex). Always exits 0. |
-| `fb dep add <task> <blocker>` / `fb dep rm …` | Edit dependencies; refuses cycles. |
+| `fb dep add <task> <blocker>` / `fb dep rm …` | Edit dependencies; refuses cycles. A human, the task's claimant, or the task's creator while it is a `draft` may edit. |
 
 ### Human only (`--as-human`)
 

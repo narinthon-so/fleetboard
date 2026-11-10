@@ -157,6 +157,18 @@ async fn test_login_then_board_and_task_ok() {
     assert!(cookie_header.contains("fb_session="));
     assert!(cookie_header.contains("HttpOnly"));
     assert!(cookie_header.contains("SameSite=Strict"));
+    // No fixed browser-side lifetime: the server's sliding TTL decides expiry.
+    // Max-Age / Expires would make the browser drop the cookie 24h after
+    // login even on an actively used board.
+    let lower = cookie_header.to_ascii_lowercase();
+    assert!(
+        !lower.contains("max-age"),
+        "login cookie must not set Max-Age: {cookie_header}"
+    );
+    assert!(
+        !lower.contains("expires"),
+        "login cookie must not set Expires: {cookie_header}"
+    );
 
     // Extract cookie value
     let cookie_val = cookie_header.split(';').next().unwrap().to_string();
@@ -446,7 +458,8 @@ async fn test_cli_serve_subcommand_prints_token_and_serves() {
         .env_clear()
         .env("PATH", "/usr/bin:/bin")
         .env("FB_HOME", env.home.path())
-        .args(["--json", "serve", "--port", "0"])
+        .env("FB_TEST_CHAIN", "")
+        .args(["--json", "--as-human", "serve", "--port", "0"])
         .stdout(std::process::Stdio::piped())
         .spawn()
         .unwrap();
@@ -477,6 +490,23 @@ async fn test_cli_serve_subcommand_prints_token_and_serves() {
     // Clean up child process
     let _ = child.kill();
     let _ = child.wait();
+}
+
+#[tokio::test]
+async fn test_serve_is_refused_for_agents() {
+    let env = Env::new();
+    let child = std::process::Command::new(assert_cmd::cargo::cargo_bin("fb"))
+        .env_clear()
+        .env("PATH", "/usr/bin:/bin")
+        .env("FB_HOME", env.home.path())
+        .env("FB_TEST_CHAIN", "bash,codex,node")
+        .args(["--json", "--as-human", "serve", "--port", "0"])
+        .output()
+        .unwrap();
+    assert_eq!(child.status.code(), Some(4));
+    let v: Value = serde_json::from_slice(&child.stdout).expect("must output valid JSON");
+    assert_eq!(v["ok"], false);
+    assert_eq!(v["error"]["code"], "HUMAN_ONLY");
 }
 
 #[test]

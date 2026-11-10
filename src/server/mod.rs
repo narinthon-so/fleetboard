@@ -5,7 +5,7 @@ pub mod auth;
 pub mod events;
 pub mod web;
 
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, RwLock};
@@ -28,7 +28,7 @@ pub struct AppState {
     pub config: ServerConfig,
     pub db_path: PathBuf,
     pub one_time_token: Arc<Mutex<Option<String>>>,
-    pub sessions: Arc<RwLock<HashSet<String>>>,
+    pub sessions: Arc<RwLock<HashMap<String, std::time::Instant>>>,
     pub tx_change: broadcast::Sender<()>,
     pub host: String,
     pub adapter: Arc<dyn crate::adapters::RuntimeAdapter>,
@@ -53,7 +53,7 @@ impl AppState {
 
         let state = Arc::new(Self {
             one_time_token: Arc::new(Mutex::new(Some(config.token.clone()))),
-            sessions: Arc::new(RwLock::new(HashSet::new())),
+            sessions: Arc::new(RwLock::new(HashMap::new())),
             tx_change,
             host,
             db_path,

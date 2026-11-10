@@ -483,6 +483,27 @@ fn require_claimant(task: &TaskRow, actor: &Actor, what: &str) -> Result<()> {
     )))
 }
 
+/// Dependency graph edits need the human (board owner), the task's claimant, or
+/// the task's creator while it is still a draft. Agent-filed tasks land as
+/// drafts with no chance to set blockers, so the creator keeps control of
+/// ordering until a human promotes the task.
+fn require_dep_editor(task: &TaskRow, actor: &Actor) -> Result<()> {
+    if actor.role() == Role::Human
+        || is_claimant(task, actor)
+        || (task.status == Status::Draft && task.created_by.id == actor.id)
+    {
+        return Ok(());
+    }
+    let held = match &task.claim {
+        Some(c) => format!("claimed by {}", c.actor.label),
+        None => "not claimed".to_string(),
+    };
+    Err(FbError::NotClaimant(format!(
+        "only a human, the claimant, or the creator of a draft can edit dependencies of {} ({held})",
+        fmt_id(task.id)
+    )))
+}
+
 fn non_empty(s: &str, what: &str) -> Result<()> {
     if s.trim().is_empty() {
         return Err(FbError::Usage(format!("{what} must not be empty")));
@@ -1176,7 +1197,7 @@ impl Backend for SqliteBackend {
 
     fn dep_add(&self, actor: &Actor, task: i64, blocker: i64, ctx: &Ctx) -> Result<TaskRow> {
         self.write(|tx| {
-            load_task(tx, task)?;
+            require_dep_editor(&load_task(tx, task)?, actor)?;
             load_task(tx, blocker)?;
             if task == blocker {
                 return Err(FbError::DepCycle(format!(
@@ -1218,7 +1239,7 @@ impl Backend for SqliteBackend {
 
     fn dep_rm(&self, actor: &Actor, task: i64, blocker: i64, ctx: &Ctx) -> Result<TaskRow> {
         self.write(|tx| {
-            load_task(tx, task)?;
+            require_dep_editor(&load_task(tx, task)?, actor)?;
             let n = tx.execute(
                 "DELETE FROM deps WHERE task_id = ?1 AND blocker_id = ?2",
                 params![task, blocker],
@@ -1937,6 +1958,55 @@ mod tests {
         db.dep_rm(&h, b, a, &ctx()).unwrap();
         assert_eq!(db.ready(None).unwrap()[0].id, b);
         assert_eq!(db.dep_rm(&h, b, a, &ctx()).unwrap_err().code(), "NOT_FOUND");
+    }
+
+    #[test]
+    fn dep_add_requires_claimant() {
+        let db = SqliteBackend::open_in_memory().unwrap();
+        let h = human(&db);
+        let a = db.add_task(&h, &new_task("a"), &ctx()).unwrap().id;
+        let b = db.add_task(&h, &new_task("b"), &ctx()).unwrap().id;
+        // An agent that does not hold the claim cannot edit the dependency graph.
+        let agent = agent(&db, "agent-1");
+        assert_eq!(
+            db.dep_add(&agent, a, b, &ctx()).unwrap_err().code(),
+            "NOT_CLAIMANT"
+        );
+        assert_eq!(
+            db.dep_rm(&agent, a, b, &ctx()).unwrap_err().code(),
+            "NOT_CLAIMANT"
+        );
+        // The task's claimant may edit dependencies.
+        let claimed = db.claim(&agent, &claim_req(Some(a)), &ctx()).unwrap();
+        assert_eq!(claimed.id, a);
+        db.dep_add(&agent, a, b, &ctx()).unwrap();
+        db.dep_rm(&agent, a, b, &ctx()).unwrap();
+        // The human (board owner) may always edit.
+        db.dep_add(&h, a, b, &ctx()).unwrap();
+        db.dep_rm(&h, a, b, &ctx()).unwrap();
+    }
+
+    #[test]
+    fn dep_creator_edits_own_draft() {
+        let db = SqliteBackend::open_in_memory().unwrap();
+        let creator = agent(&db, "creator");
+        let other = agent(&db, "other");
+        let d = db
+            .add_task(&creator, &new_task("draft-a"), &ctx())
+            .unwrap()
+            .id;
+        let b = db
+            .add_task(&creator, &new_task("draft-b"), &ctx())
+            .unwrap()
+            .id;
+        // The creator may wire up its own draft even though nothing is claimed.
+        db.dep_add(&creator, d, b, &ctx()).unwrap();
+        db.dep_rm(&creator, d, b, &ctx()).unwrap();
+        // A different agent cannot touch a draft it did not create.
+        assert_eq!(
+            db.dep_add(&other, d, b, &ctx()).unwrap_err().code(),
+            "NOT_CLAIMANT"
+        );
     }
 
     #[test]

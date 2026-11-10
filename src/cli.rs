@@ -401,7 +401,28 @@ pub fn create_session(home: &Path, as_human: bool) -> Result<Session> {
     })
 }
 
+/// `fb serve` gives the web UI full human powers (promote, approve, verify,
+/// steal, drop, delegate) over the board, so it must not start from a shell
+/// carrying agent markers. Refuse agent-started servers before any token exists.
+fn serve_guard(
+    as_human: bool,
+    env: &dyn Fn(&str) -> Option<String>,
+    chain: &[ProcInfo],
+) -> Result<()> {
+    if !as_human {
+        return Err(FbError::Usage(
+            "fb serve acts as the human; run it with --as-human from a shell with no agent markers"
+                .into(),
+        ));
+    }
+    identity::resolve_human(env, chain)
+        .map(|_| ())
+        .map_err(|e| FbError::HumanOnly(e.to_string()))
+}
+
 fn serve_cmd(cli: &Cli, home: &Path, port: u16) -> Result<Out> {
+    let env = |k: &str| std::env::var(k).ok();
+    serve_guard(cli.as_human, &env, &proc_chain())?;
     let token = crate::server::auth::generate_random_token();
     let bind_addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
     let rt = tokio::runtime::Builder::new_multi_thread()
@@ -1797,5 +1818,51 @@ mod tests {
         for key in ["runtime", "runtime_status", "pending_permissions"] {
             assert_eq!(value.get(key), Some(&Value::Null), "{key}");
         }
+    }
+
+    fn env_map<'a>(vars: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String> + 'a {
+        let m: std::collections::HashMap<String, String> = vars
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        move |k: &str| m.get(k).cloned()
+    }
+
+    #[test]
+    fn serve_guard_refuses_agent_servers() {
+        let empty_chain = vec![];
+        let env = env_map(&[]);
+
+        // No --as-human: refused, whatever the chain.
+        assert_eq!(
+            serve_guard(false, &env, &empty_chain)
+                .err()
+                .map(|e| e.code()),
+            Some("USAGE")
+        );
+
+        // Agent markers in the chain refuse a --as-human start.
+        let agent_chain = vec![ProcInfo {
+            pid: 1,
+            name: "codex".into(),
+        }];
+        assert_eq!(
+            serve_guard(true, &env, &agent_chain)
+                .err()
+                .map(|e| e.code()),
+            Some("HUMAN_ONLY")
+        );
+
+        // Agent env markers refuse a --as-human start.
+        let env_agent = env_map(&[("PASEO_AGENT_ID", "agent-1")]);
+        assert_eq!(
+            serve_guard(true, &env_agent, &empty_chain)
+                .err()
+                .map(|e| e.code()),
+            Some("HUMAN_ONLY")
+        );
+
+        // A plain human shell is allowed to serve.
+        assert!(serve_guard(true, &env, &empty_chain).is_ok());
     }
 }

@@ -67,10 +67,10 @@ This walk-through demonstrates the complete operator-agent lifecycle on a standa
 In one terminal, start the embedded web dashboard:
 
 ```bash
-fb serve
+fb serve --as-human
 ```
 
-The daemon prints a loopback URL and one-time authentication token. Open it in your browser to watch cards update in real time via Server-Sent Events (SSE).
+The daemon prints a loopback URL and one-time authentication token. Open it in your browser to watch cards update in real time via Server-Sent Events (SSE). Serving requires a shell with no agent markers (`--as-human`; it is refused when running under an agent).
 
 ### 2. Operator Adds a Task
 

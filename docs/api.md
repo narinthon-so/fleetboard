@@ -20,8 +20,10 @@ When `fb serve` starts, it generates a high-entropy 32-byte token using the OS C
 
 ### 3. Session Cookie
 Exchanging the one-time token sets an `HttpOnly`, `SameSite=Strict` cookie named `fb_session`.
+- The session expires after 24h with no requests (sliding TTL): each valid request moves expiry 24h ahead, so an actively used board stays logged in. The cookie has no `Max-Age`; the browser keeps it until it closes, and the server decides expiry. Once expired, a fresh one-time token (new `fb serve`) is required.
 - All requests to `/api/*` (except `POST /api/login`) require a valid session cookie.
 - Requests without a valid cookie receive `401 Unauthorized`.
+- `fb serve` itself requires `--as-human` and refuses to start from a shell with agent markers, so an agent cannot stand up a server that grants human powers.
 
 ### 4. Write Protection (`X-Requested-With`)
 To prevent eager agents or ambient requests from triggering state mutations through loopback:
