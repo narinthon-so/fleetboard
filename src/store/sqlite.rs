@@ -1007,7 +1007,7 @@ impl Backend for SqliteBackend {
                         )));
                     }
                     tx.execute(
-                        "UPDATE claims SET host = ?1, cwd = ?2, branch = ?3, base_commit = ?4, \
+                        "UPDATE claims SET host = ?1, cwd = ?2, branch = ?3, base_commit = COALESCE(?4, base_commit), \
                          workspace_id = COALESCE(?5, workspace_id), last_activity = ?6 WHERE id = ?7",
                         params![
                             req.loc.host,
@@ -1923,6 +1923,15 @@ mod tests {
         assert_eq!(c.base_commit.as_deref(), Some("base2"));
         assert_eq!(c.claimed_at, first_claim.claimed_at);
         assert!(events(&db).contains(&"relocated".to_string()));
+
+        // Moving outside git (no HEAD) keeps the base.
+        let mut nogit = claim_req(Some(t.id));
+        nogit.loc.cwd = "/elsewhere".into();
+        nogit.loc.branch = None;
+        nogit.loc.head = None;
+        let c = db.claim(&a, &nogit, &ctx()).unwrap().claim.unwrap();
+        assert_eq!(c.cwd, "/elsewhere");
+        assert_eq!(c.base_commit.as_deref(), Some("base2"), "base kept");
 
         // In review the location is frozen.
         let mut done_t = db.add_task(&h, &new_task("r"), &ctx()).unwrap();
